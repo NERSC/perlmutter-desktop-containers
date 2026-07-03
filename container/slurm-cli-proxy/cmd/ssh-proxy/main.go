@@ -197,7 +197,12 @@ func runClient(sock string, h protocol.Handshake, ttyRequested bool) {
 		}
 	}()
 
-	os.Exit(<-exitCh)
+	code := <-exitCh
+	if oldState != nil {
+		_ = term.Restore(int(stdin.Fd()), oldState)
+		oldState = nil
+	}
+	os.Exit(code)
 }
 
 func mustJSON(v any) []byte {
