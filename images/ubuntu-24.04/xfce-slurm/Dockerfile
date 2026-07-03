@@ -127,6 +127,22 @@ RUN \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+# Prefer the host NERSC/Cray Lmod stack when /opt is mounted.
+RUN \
+    set -eu; \
+    mkdir -p /usr/lib64/lua && \
+    ln -s /usr/lib/x86_64-linux-gnu/lua/5.3 /usr/lib64/lua/5.3 && \
+    ln -sf bash /bin/sh && \
+    printf '%s\n' \
+        'if [ -r /opt/cray/pe/lmod/lmod/init/bash ]; then' \
+        '    unset LMOD_CMD LMOD_DIR LMOD_ROOT LMOD_PKG MODULESHOME LMOD_SETTARG_CMD' \
+        '    . /opt/cray/pe/lmod/lmod/init/bash' \
+        'fi' \
+        > /etc/profile.d/zz-vnc-novnc-nersc-lmod.sh && \
+    printf '%s\n' \
+        '[ -r /etc/profile.d/zz-vnc-novnc-nersc-lmod.sh ] && . /etc/profile.d/zz-vnc-novnc-nersc-lmod.sh' \
+        >> /etc/bash.bashrc
+
 # Preserve image-level /etc/environment because Slurm runs bind-mount the host file there.
 RUN \
     set -eu; \
