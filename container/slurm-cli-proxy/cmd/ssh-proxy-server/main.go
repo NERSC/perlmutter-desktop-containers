@@ -12,8 +12,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"sync"
+	"syscall"
 
 	"github.com/creack/pty"
 
@@ -108,7 +108,18 @@ func handleConn(c net.Conn, sshPath string, verbose bool) {
 		return
 	}
 
-	cmd := exec.Command(path, h.Args...)
+	var cmd *exec.Cmd
+	usePTY := h.TTY
+	if h.TTY {
+		line := shellQuote(path, h.Args)
+		cmd = exec.Command("script", "-qfec", line, "/dev/null")
+		usePTY = false
+		if verbose {
+			log.Printf("exec via script: %s -qfec %q /dev/null (cwd=%s)", "script", line, h.Cwd)
+		}
+	} else {
+		cmd = exec.Command(path, h.Args...)
+	}
 	cmd.Env = sshEnv(os.Environ(), h.Env)
 	if h.Cwd != "" && pathExists(h.Cwd) {
 		cmd.Dir = h.Cwd
@@ -117,7 +128,7 @@ func handleConn(c net.Conn, sshPath string, verbose bool) {
 
 	if verbose {
 		mode := "pipes"
-		if h.TTY {
+		if usePTY {
 			mode = "pty"
 		}
 		log.Printf("exec %s: %s %s (cwd=%s)", mode, path, strings.Join(h.Args, " "), cmd.Dir)
@@ -130,7 +141,7 @@ func handleConn(c net.Conn, sshPath string, verbose bool) {
 		ptmx   *os.File
 	)
 
-	if h.TTY {
+	if usePTY {
 		ptmx, err = pty.Start(cmd)
 		if err != nil {
 			_ = sw.WriteFrame(protocol.FrameERROR, []byte(fmt.Sprintf("start tty: %v", err)))
@@ -263,6 +274,24 @@ func clientSSHEnvAllowed(name string) bool {
 func pathExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+// shellQuote returns a single command line string with safe POSIX single-quote escaping.
+func shellQuote(cmdPath string, args []string) string {
+	var b strings.Builder
+	b.WriteString(posixQuote(cmdPath))
+	for _, arg := range args {
+		b.WriteByte(' ')
+		b.WriteString(posixQuote(arg))
+	}
+	return b.String()
+}
+
+func posixQuote(s string) string {
+	if s == "" {
+		return "''"
+	}
+	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
 
 type safeWriter struct {
