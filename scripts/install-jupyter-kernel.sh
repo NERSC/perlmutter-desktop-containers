@@ -20,7 +20,7 @@ Options:
                           ubuntu24.04: fvwm3, xfce, xfce-slurm
                           ubuntu: gpu-xfce
                           alma9: fvwm3, xfce
-                          opensuse15.6: xfce
+                          opensuse15.6: xfce, xfce-slurm
                           Default: fvwm3
   --name NAME             Kernelspec directory name.
                           Default: vnc-novnc-DISTRO-DESKTOP.
@@ -33,6 +33,9 @@ Options:
   --slurm                 Enable scli socket setup in the generated kernelspec.
                           Automatically enabled for slurm-cli image variants.
   --no-slurm              Disable scli socket setup in the generated kernelspec.
+  --ssh-proxy             Enable host SSH proxy socket setup in the generated kernelspec.
+                          Automatically enabled for slurm-cli image variants.
+  --no-ssh-proxy          Disable host SSH proxy socket setup in the generated kernelspec.
   --all                   Install one kernelspec for every supported variant.
   --prepull               Run "podman-hpc pull IMAGE" for each installed image.
   --prepull-only          Only run "podman-hpc pull IMAGE"; do not install kernelspecs.
@@ -56,6 +59,7 @@ Supported variants:
   alma9         fvwm3  ghcr.io/dingp/vnc-novnc-container:alma-9-fvwm3-main
   alma9         xfce   ghcr.io/dingp/vnc-novnc-container:alma-9-xfce-main
   opensuse15.6  xfce   ghcr.io/dingp/vnc-novnc-container:opensuse-15.6-main
+  opensuse15.6  xfce-slurm registry.nersc.gov/dseg/novnc:opensuse15.6-xfce-slurm
 EOF
 }
 
@@ -92,6 +96,7 @@ canonical_desktop() {
 set_variant_metadata() {
     extra_podman_args=()
     variant_slurm=0
+    variant_ssh_proxy=0
 
     case "${distro}:${desktop}" in
         debian12:fvwm3)
@@ -114,6 +119,7 @@ set_variant_metadata() {
             image="registry.nersc.gov/dseg/novnc:ubuntu24.04-xfce-slurm"
             variant_slug="ubuntu24.04-xfce-slurm"
             variant_slurm=1
+            variant_ssh_proxy=1
             ;;
         ubuntu:gpu-xfce)
             image="ghcr.io/dingp/vnc-novnc-container:ubuntu-gpu-xfce-main"
@@ -131,6 +137,12 @@ set_variant_metadata() {
         opensuse15.6:xfce)
             image="ghcr.io/dingp/vnc-novnc-container:opensuse-15.6-main"
             variant_slug="opensuse15.6-xfce"
+            ;;
+        opensuse15.6:xfce-slurm)
+            image="registry.nersc.gov/dseg/novnc:opensuse15.6-xfce-slurm"
+            variant_slug="opensuse15.6-xfce-slurm"
+            variant_slurm=1
+            variant_ssh_proxy=1
             ;;
         *)
             printf 'Unsupported distro/desktop combination: %s %s\n\n' "${distro}" "${desktop}" >&2
@@ -152,6 +164,7 @@ prefix="${HOME}/.local"
 pip_install=1
 source_wrapper=0
 slurm_override=""
+ssh_proxy_override=""
 force=0
 all_variants=0
 prepull=0
@@ -165,7 +178,9 @@ positionals=()
 prepulled_images=()
 extra_podman_args=()
 variant_slurm=0
+variant_ssh_proxy=0
 scli_server_built=0
+ssh_proxy_server_built=0
 
 while [[ "$#" -gt 0 ]]; do
     case "$1" in
@@ -207,6 +222,14 @@ while [[ "$#" -gt 0 ]]; do
             ;;
         --no-slurm)
             slurm_override=0
+            shift
+            ;;
+        --ssh-proxy)
+            ssh_proxy_override=1
+            shift
+            ;;
+        --no-ssh-proxy)
+            ssh_proxy_override=0
             shift
             ;;
         --all)
@@ -281,8 +304,8 @@ if [[ ! -f "${kernel_src}/kernel.json" ]]; then
 fi
 
 if [[ "${all_variants}" -eq 1 ]]; then
-    if [[ "${distro_set}" -eq 1 || "${desktop_set}" -eq 1 || "${kernel_name_set}" -eq 1 || "${display_name_set}" -eq 1 || -n "${slurm_override}" ]]; then
-        printf '%s\n' '--all cannot be combined with DISTRO, DESKTOP, --distro, --desktop, --name, --display-name, --slurm, or --no-slurm.' >&2
+    if [[ "${distro_set}" -eq 1 || "${desktop_set}" -eq 1 || "${kernel_name_set}" -eq 1 || "${display_name_set}" -eq 1 || -n "${slurm_override}" || -n "${ssh_proxy_override}" ]]; then
+        printf '%s\n' '--all cannot be combined with DISTRO, DESKTOP, --distro, --desktop, --name, --display-name, --slurm, --no-slurm, --ssh-proxy, or --no-ssh-proxy.' >&2
         exit 2
     fi
 fi
@@ -348,6 +371,32 @@ build_scli_server() {
     scli_server_built=1
 }
 
+build_ssh_proxy_server() {
+    local user_key="${USER:-$(id -u)}"
+    local go_cache="${GOCACHE:-${TMPDIR:-/tmp}/vnc-novnc-go-build-cache-${user_key}}"
+    local go_mod_cache="${GOMODCACHE:-${TMPDIR:-/tmp}/vnc-novnc-go-mod-cache-${user_key}}"
+    local output="${HOME}/bin/ssh-proxy-server"
+
+    if [[ "${ssh_proxy_server_built}" -eq 1 ]]; then
+        return 0
+    fi
+
+    if ! command -v go >/dev/null 2>&1; then
+        printf 'go is required to build ssh-proxy-server for SSH proxy-enabled kernels.\n' >&2
+        printf 'Load or install Go, then rerun this installer.\n' >&2
+        exit 1
+    fi
+
+    mkdir -p "${HOME}/bin"
+    printf 'Building ssh-proxy-server: %s\n' "${output}"
+    (
+        cd "${repo_dir}/container/slurm-cli-proxy"
+        GOCACHE="${go_cache}" GOMODCACHE="${go_mod_cache}" go build -o "${output}" ./cmd/ssh-proxy-server
+    )
+    chmod 0755 "${output}"
+    ssh_proxy_server_built=1
+}
+
 install_one() {
     local install_distro="$1"
     local install_desktop="$2"
@@ -361,9 +410,15 @@ install_one() {
     if [[ -n "${slurm_override}" ]]; then
         variant_slurm="${slurm_override}"
     fi
+    if [[ -n "${ssh_proxy_override}" ]]; then
+        variant_ssh_proxy="${ssh_proxy_override}"
+    fi
 
     if [[ "${variant_slurm}" -eq 1 ]]; then
         build_scli_server
+    fi
+    if [[ "${variant_ssh_proxy}" -eq 1 ]]; then
+        build_ssh_proxy_server
     fi
 
     if [[ "${prepull}" -eq 1 ]]; then
@@ -391,12 +446,12 @@ install_one() {
     cp "${kernel_src}/kernel-wrapper" "${tmpdir}/${install_kernel_name}/"
     cp "${kernel_src}/vnc-novnc.yaml" "${tmpdir}/${install_kernel_name}/"
 
-    python3 - "${tmpdir}/${install_kernel_name}/kernel.json" "${tmpdir}/${install_kernel_name}/vnc-novnc.yaml" "${install_display_name}" "${image}" "${variant_slurm}" "${extra_podman_args[@]}" <<'PY'
+    python3 - "${tmpdir}/${install_kernel_name}/kernel.json" "${tmpdir}/${install_kernel_name}/vnc-novnc.yaml" "${install_display_name}" "${image}" "${variant_slurm}" "${variant_ssh_proxy}" "${extra_podman_args[@]}" <<'PY'
 import json
 import sys
 
-kernel_json, kernel_yaml, display_name, image, slurm_enabled = sys.argv[1:6]
-extra_podman_args = sys.argv[6:]
+kernel_json, kernel_yaml, display_name, image, slurm_enabled, ssh_proxy_enabled = sys.argv[1:7]
+extra_podman_args = sys.argv[7:]
 pull_policy = "missing"
 slurm_volumes = [
     "/global:/global",
@@ -459,6 +514,7 @@ with open(kernel_yaml) as handle:
 set_yaml_scalar(lines, "image", image)
 set_yaml_scalar(lines, "pull_policy", pull_policy)
 set_yaml_scalar(lines, "slurm", "true" if slurm_enabled == "1" else "false")
+set_yaml_scalar(lines, "ssh_proxy", "true" if ssh_proxy_enabled == "1" else "false")
 set_yaml_list(lines, "extra_podman_args", extra_podman_args)
 if slurm_enabled == "1":
     set_yaml_list(lines, "volume", slurm_volumes)
@@ -480,6 +536,9 @@ slurm_config_path=
 slurm_config_enabled=
 slurm_cli_enabled=
 slurm_socket="${SCLI_SOCKET:-}"
+ssh_proxy_config_enabled=
+ssh_proxy_cli_enabled=
+ssh_proxy_socket="${SSH_PROXY_SOCKET:-}"
 vnc_novnc_dry_run=0
 
 vnc_novnc_read_yaml_scalar() {
@@ -510,8 +569,20 @@ vnc_novnc_detect_slurm() {
                 slurm_cli_enabled=0
                 shift
                 ;;
+            --ssh-proxy)
+                ssh_proxy_cli_enabled=1
+                shift
+                ;;
+            --no-ssh-proxy)
+                ssh_proxy_cli_enabled=0
+                shift
+                ;;
             --slurm-socket)
                 slurm_socket="${2:-}"
+                shift 2
+                ;;
+            --ssh-proxy-socket)
+                ssh_proxy_socket="${2:-}"
                 shift 2
                 ;;
             --dry-run)
@@ -532,8 +603,15 @@ vnc_novnc_detect_slurm() {
             1|true|True|TRUE|yes|Yes|YES|on|On|ON) slurm_config_enabled=1 ;;
             0|false|False|FALSE|no|No|NO|off|Off|OFF) slurm_config_enabled=0 ;;
         esac
+        case "$(vnc_novnc_read_yaml_scalar ssh_proxy "$slurm_config_path")" in
+            1|true|True|TRUE|yes|Yes|YES|on|On|ON) ssh_proxy_config_enabled=1 ;;
+            0|false|False|FALSE|no|No|NO|off|Off|OFF) ssh_proxy_config_enabled=0 ;;
+        esac
         if [ -z "$slurm_socket" ]; then
             slurm_socket="$(vnc_novnc_read_yaml_scalar slurm_socket "$slurm_config_path")"
+        fi
+        if [ -z "$ssh_proxy_socket" ]; then
+            ssh_proxy_socket="$(vnc_novnc_read_yaml_scalar ssh_proxy_socket "$slurm_config_path")"
         fi
     fi
 
@@ -543,6 +621,14 @@ vnc_novnc_detect_slurm() {
         VNC_NOVNC_SLURM="$slurm_config_enabled"
     else
         VNC_NOVNC_SLURM="${VNC_NOVNC_SLURM:-0}"
+    fi
+
+    if [ -n "$ssh_proxy_cli_enabled" ]; then
+        VNC_NOVNC_SSH_PROXY="$ssh_proxy_cli_enabled"
+    elif [ -n "$ssh_proxy_config_enabled" ]; then
+        VNC_NOVNC_SSH_PROXY="$ssh_proxy_config_enabled"
+    else
+        VNC_NOVNC_SSH_PROXY="${VNC_NOVNC_SSH_PROXY:-0}"
     fi
 }
 
@@ -604,8 +690,67 @@ vnc_novnc_start_scli_server() {
     exit 1
 }
 
+vnc_novnc_start_ssh_proxy_server() {
+    case "$VNC_NOVNC_SSH_PROXY" in
+        1|true|True|TRUE|yes|Yes|YES|on|On|ON) ;;
+        *) return 0 ;;
+    esac
+    if [ "$vnc_novnc_dry_run" = "1" ]; then
+        return 0
+    fi
+
+    if [ -z "$ssh_proxy_socket" ]; then
+        if [ -n "${SSH_PROXY_SOCKET:-}" ]; then
+            ssh_proxy_socket="$SSH_PROXY_SOCKET"
+        elif [ -n "${XDG_RUNTIME_DIR:-}" ]; then
+            ssh_proxy_socket="${XDG_RUNTIME_DIR}/ssh-proxy.sock"
+        elif [ -n "${HOME:-}" ]; then
+            ssh_proxy_socket="${HOME}/.local/run/ssh-proxy.sock"
+        else
+            ssh_proxy_socket="/tmp/ssh-proxy.sock"
+        fi
+    fi
+    SSH_PROXY_SOCKET="$ssh_proxy_socket"
+    export SSH_PROXY_SOCKET VNC_NOVNC_SSH_PROXY
+
+    if [ -S "$SSH_PROXY_SOCKET" ]; then
+        return 0
+    fi
+
+    ssh_proxy_server="${SSH_PROXY_SERVER:-${HOME}/bin/ssh-proxy-server}"
+    if [ ! -x "$ssh_proxy_server" ]; then
+        echo "ssh-proxy-server is not executable: $ssh_proxy_server" >&2
+        exit 1
+    fi
+
+    socket_dir="$(dirname "$SSH_PROXY_SOCKET")"
+    mkdir -p "$socket_dir"
+    chmod 700 "$socket_dir" 2>/dev/null || true
+
+    log_user="${USER:-$(id -u)}"
+    ssh_proxy_log="${SSH_PROXY_SERVER_LOG:-/tmp/vnc-novnc-ssh-proxy-server-${log_user}.log}"
+    mkdir -p "$(dirname "$ssh_proxy_log")"
+    echo "Starting ssh-proxy-server: $ssh_proxy_server --socket $SSH_PROXY_SOCKET" >&2
+    "$ssh_proxy_server" --socket "$SSH_PROXY_SOCKET" >>"$ssh_proxy_log" 2>&1 &
+
+    i=0
+    while [ "$i" -lt 50 ]; do
+        if [ -S "$SSH_PROXY_SOCKET" ]; then
+            echo "ssh-proxy-server log: $ssh_proxy_log" >&2
+            return 0
+        fi
+        i=$((i + 1))
+        sleep 0.1
+    done
+
+    echo "Timed out waiting for ssh-proxy-server socket: $SSH_PROXY_SOCKET" >&2
+    echo "See log: $ssh_proxy_log" >&2
+    exit 1
+}
+
 vnc_novnc_detect_slurm "$@"
 vnc_novnc_start_scli_server
+vnc_novnc_start_ssh_proxy_server
 ''')
     if source_wrapper == "1":
         handle.write(
@@ -653,6 +798,7 @@ if [[ "${prepull_only}" -eq 1 ]]; then
         prepull_one alma9 fvwm3
         prepull_one alma9 xfce
         prepull_one opensuse15.6 xfce
+        prepull_one opensuse15.6 xfce-slurm
     else
         prepull_one "${distro}" "${desktop}"
     fi
@@ -671,6 +817,7 @@ if [[ "${all_variants}" -eq 1 ]]; then
     install_one alma9 fvwm3
     install_one alma9 xfce
     install_one opensuse15.6 xfce
+    install_one opensuse15.6 xfce-slurm
 else
     distro="$(canonical_distro "${distro}")"
     desktop="$(canonical_desktop "${desktop}")"

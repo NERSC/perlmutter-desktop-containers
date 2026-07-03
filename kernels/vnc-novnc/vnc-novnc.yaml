@@ -6,6 +6,7 @@ userns: keep-id
 keep_groups: true
 pull_policy: missing
 slurm: false
+ssh_proxy: false
 
 volume:
   - "/global:/global"

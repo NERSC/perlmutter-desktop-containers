@@ -20,6 +20,10 @@ SLURM="${SLURM:-${VNC_NOVNC_SLURM:-0}}"
 SCLI_SOCKET="${SCLI_SOCKET:-}"
 SCLI_SERVER="${SCLI_SERVER:-${HOME}/bin/scli-server}"
 SCLI_SERVER_LOG="${SCLI_SERVER_LOG:-/tmp/vnc-novnc-scli-server-${USER:-$(id -u)}.log}"
+SSH_PROXY="${SSH_PROXY:-${VNC_NOVNC_SSH_PROXY:-0}}"
+SSH_PROXY_SOCKET="${SSH_PROXY_SOCKET:-}"
+SSH_PROXY_SERVER="${SSH_PROXY_SERVER:-${HOME}/bin/ssh-proxy-server}"
+SSH_PROXY_SERVER_LOG="${SSH_PROXY_SERVER_LOG:-/tmp/vnc-novnc-ssh-proxy-server-${USER:-$(id -u)}.log}"
 
 while [[ "$#" -gt 0 ]]; do
     case "$1" in
@@ -43,10 +47,32 @@ while [[ "$#" -gt 0 ]]; do
             SCLI_SERVER_LOG="${2:?--slurm-server-log requires a value}"
             shift 2
             ;;
+        --ssh-proxy)
+            SSH_PROXY=1
+            shift
+            ;;
+        --no-ssh-proxy)
+            SSH_PROXY=0
+            shift
+            ;;
+        --ssh-proxy-socket)
+            SSH_PROXY_SOCKET="${2:?--ssh-proxy-socket requires a value}"
+            shift 2
+            ;;
+        --ssh-proxy-server)
+            SSH_PROXY_SERVER="${2:?--ssh-proxy-server requires a value}"
+            shift 2
+            ;;
+        --ssh-proxy-server-log)
+            SSH_PROXY_SERVER_LOG="${2:?--ssh-proxy-server-log requires a value}"
+            shift 2
+            ;;
         -h|--help)
             cat <<'EOF'
 Usage: scripts/run-vnc-novnc.sh [--slurm] [--slurm-socket PATH]
                                 [--slurm-server PATH] [--slurm-server-log PATH]
+                                [--ssh-proxy] [--ssh-proxy-socket PATH]
+                                [--ssh-proxy-server PATH] [--ssh-proxy-server-log PATH]
 
 Legacy shell helper for running the default VNC/noVNC image.
 Prefer scripts/run-vnc-novnc.py for full option support.
@@ -159,6 +185,18 @@ default_scli_socket() {
     printf '%s/.local/run/scli.sock\n' "${HOME:-}"
 }
 
+default_ssh_proxy_socket() {
+    if [[ -n "${SSH_PROXY_SOCKET}" ]]; then
+        printf '%s\n' "${SSH_PROXY_SOCKET}"
+        return
+    fi
+    if [[ -n "${XDG_RUNTIME_DIR:-}" ]]; then
+        printf '%s/ssh-proxy.sock\n' "${XDG_RUNTIME_DIR}"
+        return
+    fi
+    printf '%s/.local/run/ssh-proxy.sock\n' "${HOME:-}"
+}
+
 start_scli_server() {
     if [[ -S "${SCLI_SOCKET}" ]]; then
         return 0
@@ -189,6 +227,39 @@ start_scli_server() {
 
     printf 'Timed out waiting for scli-server socket: %s\n' "${SCLI_SOCKET}" >&2
     printf 'See log: %s\n' "${SCLI_SERVER_LOG}" >&2
+    exit 1
+}
+
+start_ssh_proxy_server() {
+    if [[ -S "${SSH_PROXY_SOCKET}" ]]; then
+        return 0
+    fi
+
+    if [[ ! -x "${SSH_PROXY_SERVER}" ]]; then
+        printf 'ssh-proxy-server is not executable: %s\n' "${SSH_PROXY_SERVER}" >&2
+        printf 'Install it with scripts/install-jupyter-kernel.sh for an SSH proxy-enabled kernel or set SSH_PROXY_SERVER.\n' >&2
+        exit 1
+    fi
+
+    mkdir -p "$(dirname "${SSH_PROXY_SOCKET}")"
+    chmod 700 "$(dirname "${SSH_PROXY_SOCKET}")" 2>/dev/null || true
+    mkdir -p "$(dirname "${SSH_PROXY_SERVER_LOG}")"
+
+    printf 'Starting ssh-proxy-server: %s --socket %s\n' "${SSH_PROXY_SERVER}" "${SSH_PROXY_SOCKET}" >&2
+    "${SSH_PROXY_SERVER}" --socket "${SSH_PROXY_SOCKET}" >>"${SSH_PROXY_SERVER_LOG}" 2>&1 &
+
+    local i=0
+    while [[ "${i}" -lt 50 ]]; do
+        if [[ -S "${SSH_PROXY_SOCKET}" ]]; then
+            printf 'ssh-proxy-server log: %s\n' "${SSH_PROXY_SERVER_LOG}" >&2
+            return 0
+        fi
+        i="$((i + 1))"
+        sleep 0.1
+    done
+
+    printf 'Timed out waiting for ssh-proxy-server socket: %s\n' "${SSH_PROXY_SOCKET}" >&2
+    printf 'See log: %s\n' "${SSH_PROXY_SERVER_LOG}" >&2
     exit 1
 }
 
@@ -229,6 +300,14 @@ case "${SLURM,,}" in
         SCLI_SOCKET="$(default_scli_socket)"
         start_scli_server
         run_args+=( -v "${SCLI_SOCKET}:${SCLI_SOCKET}:rw" -e "SCLI_SOCKET=${SCLI_SOCKET}" )
+        ;;
+esac
+
+case "${SSH_PROXY,,}" in
+    1|true|yes|y|on)
+        SSH_PROXY_SOCKET="$(default_ssh_proxy_socket)"
+        start_ssh_proxy_server
+        run_args+=( -v "${SSH_PROXY_SOCKET}:${SSH_PROXY_SOCKET}:rw" -e "SSH_PROXY_SOCKET=${SSH_PROXY_SOCKET}" )
         ;;
 esac
 

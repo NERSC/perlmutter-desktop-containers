@@ -5,6 +5,7 @@ import argparse
 import os
 import secrets
 import shlex
+import stat
 import string
 import subprocess
 import sys
@@ -31,7 +32,7 @@ NERSC_PROGRAMMING_ENV_VARS = (
     "LMOD_FAMILY_CUDATOOLKIT_VERSION",
 )
 LIST_CONFIG_KEYS = ("volume", "mount", "env", "group_add", "extra_podman_args")
-BOOL_CONFIG_KEYS = ("expose_vnc", "userns_keep_id", "keep_groups", "dry_run", "slurm")
+BOOL_CONFIG_KEYS = ("expose_vnc", "userns_keep_id", "keep_groups", "dry_run", "slurm", "ssh_proxy")
 INT_CONFIG_KEYS = ("password_length",)
 VALID_CONFIG_KEYS = set(
     (
@@ -65,6 +66,10 @@ VALID_CONFIG_KEYS = set(
         "slurm_socket",
         "slurm_server",
         "slurm_server_log",
+        "ssh_proxy",
+        "ssh_proxy_socket",
+        "ssh_proxy_server",
+        "ssh_proxy_server_log",
     )
 )
 
@@ -153,8 +158,38 @@ def default_slurm_server_log():
     return os.path.join(tempfile.gettempdir(), "vnc-novnc-scli-server-{}.log".format(user))
 
 
+def default_ssh_proxy_socket():
+    if os.environ.get("SSH_PROXY_SOCKET"):
+        return os.environ["SSH_PROXY_SOCKET"]
+    if os.environ.get("XDG_RUNTIME_DIR"):
+        return os.path.join(os.environ["XDG_RUNTIME_DIR"], "ssh-proxy.sock")
+    home = os.environ.get("HOME", "")
+    if home:
+        return os.path.join(home, ".local", "run", "ssh-proxy.sock")
+    return "/tmp/ssh-proxy.sock"
+
+
+def default_ssh_proxy_server():
+    home = os.environ.get("HOME", "")
+    if home:
+        return os.path.join(home, "bin", "ssh-proxy-server")
+    return "ssh-proxy-server"
+
+
+def default_ssh_proxy_server_log():
+    user = os.environ.get("USER") or os.environ.get("LOGNAME") or str(os.getuid())
+    return os.path.join(tempfile.gettempdir(), "vnc-novnc-ssh-proxy-server-{}.log".format(user))
+
+
+def path_is_socket(path):
+    try:
+        return stat.S_ISSOCK(os.stat(path).st_mode)
+    except OSError:
+        return False
+
+
 def start_slurm_proxy_server(socket_path, slurm_server, slurm_server_log):
-    if os.path.exists(socket_path):
+    if path_is_socket(socket_path):
         return
 
     server = os.path.expandvars(os.path.expanduser(slurm_server or default_slurm_server()))
@@ -199,6 +234,56 @@ def start_slurm_proxy_server(socket_path, slurm_server, slurm_server_log):
 
     raise SystemExit(
         "Timed out waiting for scli-server socket: {}\n"
+        "See log: {}".format(socket_path, log_path)
+    )
+
+
+def start_ssh_proxy_server(socket_path, ssh_proxy_server, ssh_proxy_server_log):
+    if path_is_socket(socket_path):
+        return
+
+    server = os.path.expandvars(os.path.expanduser(ssh_proxy_server or default_ssh_proxy_server()))
+    log_path = os.path.expandvars(os.path.expanduser(ssh_proxy_server_log or default_ssh_proxy_server_log()))
+    if not os.path.exists(server):
+        raise SystemExit(
+            "SSH proxy socket does not exist and ssh-proxy-server was not found: {}\n"
+            "Install it with scripts/install-jupyter-kernel.sh for an SSH proxy-enabled kernel "
+            "or pass --ssh-proxy-server PATH.".format(server)
+        )
+    if not os.access(server, os.X_OK):
+        raise SystemExit("ssh-proxy-server is not executable: {}".format(server))
+
+    socket_dir = os.path.dirname(socket_path)
+    if socket_dir:
+        os.makedirs(socket_dir, mode=0o700, exist_ok=True)
+    log_dir = os.path.dirname(log_path)
+    if log_dir:
+        os.makedirs(log_dir, exist_ok=True)
+
+    print("Starting ssh-proxy-server: {} --socket {}".format(server, socket_path), file=sys.stderr)
+    with open(log_path, "ab") as log_handle:
+        process = subprocess.Popen(
+            [server, "--socket", socket_path],
+            stdout=log_handle,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        if os.path.exists(socket_path):
+            print("ssh-proxy-server log: {}".format(log_path), file=sys.stderr)
+            return
+        rc = process.poll()
+        if rc is not None:
+            raise SystemExit(
+                "ssh-proxy-server exited with status {} before creating socket: {}\n"
+                "See log: {}".format(rc, socket_path, log_path)
+            )
+        time.sleep(0.1)
+
+    raise SystemExit(
+        "Timed out waiting for ssh-proxy-server socket: {}\n"
         "See log: {}".format(socket_path, log_path)
     )
 
@@ -277,6 +362,33 @@ def add_slurm_proxy_args(
     ):
         run_args.extend(["-v", "{}:{}:rw".format(socket_path, socket_path)])
     run_args.extend(["-e", "SCLI_SOCKET={}".format(socket_path)])
+
+
+def add_ssh_proxy_args(
+    run_args,
+    ssh_proxy_socket,
+    dry_run=False,
+    ssh_proxy_server="",
+    ssh_proxy_server_log="",
+    volumes=None,
+    mounts=None,
+    implicit_same_path_mounts=None,
+):
+    socket_path = os.path.expandvars(os.path.expanduser(ssh_proxy_socket or default_ssh_proxy_socket()))
+    if not socket_path:
+        raise SystemExit("Unable to resolve SSH proxy socket path.")
+    if "$" in socket_path:
+        raise SystemExit("SSH proxy socket contains unresolved variables: {}".format(socket_path))
+    if not dry_run:
+        start_ssh_proxy_server(socket_path, ssh_proxy_server, ssh_proxy_server_log)
+    if not path_visible_through_same_path_mount(
+        socket_path,
+        volumes=volumes,
+        mounts=mounts,
+        implicit_same_path_mounts=implicit_same_path_mounts,
+    ):
+        run_args.extend(["-v", "{}:{}:rw".format(socket_path, socket_path)])
+    run_args.extend(["-e", "SSH_PROXY_SOCKET={}".format(socket_path)])
 
 
 def mount_targets_container_path(volumes, mounts, container_path):
@@ -526,6 +638,10 @@ def build_defaults(config):
         "slurm_socket": "",
         "slurm_server": "",
         "slurm_server_log": "",
+        "ssh_proxy": False,
+        "ssh_proxy_socket": "",
+        "ssh_proxy_server": "",
+        "ssh_proxy_server_log": "",
     }
     defaults.update(config)
 
@@ -551,6 +667,9 @@ def build_defaults(config):
         "slurm_socket": os.environ.get("SCLI_SOCKET"),
         "slurm_server": os.environ.get("SCLI_SERVER"),
         "slurm_server_log": os.environ.get("SCLI_SERVER_LOG"),
+        "ssh_proxy_socket": os.environ.get("SSH_PROXY_SOCKET"),
+        "ssh_proxy_server": os.environ.get("SSH_PROXY_SERVER"),
+        "ssh_proxy_server_log": os.environ.get("SSH_PROXY_SERVER_LOG"),
     }
     for key, value in env_defaults.items():
         if value is not None:
@@ -562,6 +681,8 @@ def build_defaults(config):
         defaults["expose_vnc"] = env_bool("EXPOSE_VNC", defaults["expose_vnc"])
     if "VNC_NOVNC_SLURM" in os.environ:
         defaults["slurm"] = env_bool("VNC_NOVNC_SLURM", defaults["slurm"])
+    if "VNC_NOVNC_SSH_PROXY" in os.environ:
+        defaults["ssh_proxy"] = env_bool("VNC_NOVNC_SSH_PROXY", defaults["ssh_proxy"])
 
     if not defaults["vnc_host_port"]:
         defaults["vnc_host_port"] = defaults["vnc_port"]
@@ -673,6 +794,17 @@ def add_podman_run_args(args, password_file):
             args.dry_run,
             args.slurm_server,
             args.slurm_server_log,
+            volumes=args.volume,
+            mounts=args.mount,
+        )
+
+    if args.ssh_proxy:
+        add_ssh_proxy_args(
+            run_args,
+            args.ssh_proxy_socket,
+            args.dry_run,
+            args.ssh_proxy_server,
+            args.ssh_proxy_server_log,
             volumes=args.volume,
             mounts=args.mount,
         )
@@ -799,6 +931,11 @@ def parse_args(argv):
     parser.add_argument("--slurm-socket", default=defaults["slurm_socket"], help="Path to the host scli-server Unix socket. Default: SCLI_SOCKET, XDG_RUNTIME_DIR/scli.sock, or ~/.local/run/scli.sock.")
     parser.add_argument("--slurm-server", default=defaults["slurm_server"], help="Path to host scli-server. Default: SCLI_SERVER or ~/bin/scli-server.")
     parser.add_argument("--slurm-server-log", default=defaults["slurm_server_log"], help="Path to the host scli-server startup log. Default: /tmp/vnc-novnc-scli-server-$USER.log.")
+    parser.add_argument("--ssh-proxy", action="store_true", default=defaults["ssh_proxy"], help="Mount an ssh-proxy-server Unix socket and set SSH_PROXY_SOCKET inside the container.")
+    parser.add_argument("--no-ssh-proxy", action="store_false", dest="ssh_proxy")
+    parser.add_argument("--ssh-proxy-socket", default=defaults["ssh_proxy_socket"], help="Path to the host ssh-proxy-server Unix socket. Default: SSH_PROXY_SOCKET, XDG_RUNTIME_DIR/ssh-proxy.sock, or ~/.local/run/ssh-proxy.sock.")
+    parser.add_argument("--ssh-proxy-server", default=defaults["ssh_proxy_server"], help="Path to host ssh-proxy-server. Default: SSH_PROXY_SERVER or ~/bin/ssh-proxy-server.")
+    parser.add_argument("--ssh-proxy-server-log", default=defaults["ssh_proxy_server_log"], help="Path to the host ssh-proxy-server startup log. Default: /tmp/vnc-novnc-ssh-proxy-server-$USER.log.")
     parser.add_argument("--dry-run", action="store_true", default=defaults["dry_run"], help="Print the generated command without running podman-hpc.")
     parser.add_argument("extra_podman_args", nargs=argparse.REMAINDER, default=list(defaults["extra_podman_args"]))
 

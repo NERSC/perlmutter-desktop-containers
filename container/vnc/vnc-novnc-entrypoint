@@ -168,7 +168,8 @@ printf 'Starting VNC server on display %s, port %s, geometry %s, depth %s\n' \
     "${display}" "${vnc_port}" "${VNC_GEOMETRY}" "${VNC_DEPTH}"
 if vncserver_display_only; then
     write_display_only_vnc_config
-    vncserver "${display}"
+    vncserver "${display}" &
+    vncserver_pid="$!"
 else
     vncserver "${vnc_args[@]}"
 fi
@@ -176,6 +177,9 @@ fi
 cleanup() {
     if [[ -n "${websockify_pid:-}" ]]; then
         kill "${websockify_pid}" >/dev/null 2>&1 || true
+    fi
+    if [[ -n "${vncserver_pid:-}" ]]; then
+        kill "${vncserver_pid}" >/dev/null 2>&1 || true
     fi
     vncserver -kill "${display}" >/dev/null 2>&1 || true
 }

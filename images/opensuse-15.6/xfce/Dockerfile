@@ -43,7 +43,9 @@ RUN \
         patterns-xfce-xfce \
         procps \
         python3 \
+        python3-cryptography \
         python3-ipykernel \
+        python3-PyJWT \
         python3-websockify \
         tar \
         thunar \

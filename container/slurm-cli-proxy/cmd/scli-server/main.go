@@ -33,6 +33,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("socket path: %v", err)
 	}
+	if socketAlreadyExists(sock) {
+		if *verbose {
+			log.Printf("scli-server socket already exists, not starting: %s", sock)
+		}
+		return
+	}
 	if err := setupListenerPath(sock); err != nil {
 		log.Fatalf("prepare socket: %v", err)
 	}
@@ -72,6 +78,14 @@ func setupListenerPath(sock string) error {
 	}
 	_ = os.Remove(sock)
 	return nil
+}
+
+func socketAlreadyExists(sock string) bool {
+	info, err := os.Stat(sock)
+	if err != nil {
+		return false
+	}
+	return info.Mode()&os.ModeSocket != 0
 }
 
 func buildAllowed(csv string) map[string]bool {
@@ -329,5 +343,4 @@ func posixQuote(s string) string {
 	// Replace ' with '\'' sequence
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
-
 

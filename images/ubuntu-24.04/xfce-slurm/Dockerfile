@@ -11,7 +11,9 @@ RUN \
     set -eu; \
     arch="${TARGETARCH:-amd64}"; \
     GOOS="${TARGETOS}" GOARCH="${arch}" CGO_ENABLED=0 \
-        go build -trimpath -ldflags="-s -w" -o /out/scli ./cmd/scli
+        go build -trimpath -ldflags="-s -w" -o /out/scli ./cmd/scli; \
+    GOOS="${TARGETOS}" GOARCH="${arch}" CGO_ENABLED=0 \
+        go build -trimpath -ldflags="-s -w" -o /out/ssh-proxy ./cmd/ssh-proxy
 
 FROM ubuntu:24.04
 
@@ -170,13 +172,15 @@ COPY container/vnc/vnc-novnc-entrypoint /usr/local/bin/vnc-novnc-entrypoint
 COPY container/kernel/vnc-novnc-jupyter-kernel /usr/local/bin/vnc-novnc-jupyter-kernel
 COPY vnc_novnc /usr/local/lib/vnc-novnc/vnc_novnc
 COPY --from=slurm-cli-builder /out/scli /usr/local/bin/scli
+COPY --from=slurm-cli-builder /out/ssh-proxy /usr/local/bin/ssh-proxy
 
 RUN \
-    chmod 0755 /usr/local/bin/vnc-novnc-entrypoint /usr/local/bin/vnc-novnc-jupyter-kernel /usr/local/bin/scli && \
+    chmod 0755 /usr/local/bin/vnc-novnc-entrypoint /usr/local/bin/vnc-novnc-jupyter-kernel /usr/local/bin/scli /usr/local/bin/ssh-proxy && \
     chmod -R a+rX /usr/local/lib/vnc-novnc && \
     for command in srun sbatch salloc scontrol sacct squeue scancel sinfo sshare sprio; do \
         ln -sf /usr/local/bin/scli "/usr/local/bin/${command}"; \
     done && \
+    ln -sf /usr/local/bin/ssh-proxy /usr/local/bin/ssh && \
     printf '%s\n' \
         '#!/bin/sh' \
         'dbus_session_valid=0' \

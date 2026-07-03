@@ -22,6 +22,22 @@ func DefaultSocketPath() (string, error) {
 	return filepath.Join(home, ".local", "run", "scli.sock"), nil
 }
 
+// DefaultSSHProxySocketPath returns a user-scoped SSH proxy socket path.
+// Order: SSH_PROXY_SOCKET > XDG_RUNTIME_DIR > ~/.local/run
+func DefaultSSHProxySocketPath() (string, error) {
+	if v := os.Getenv("SSH_PROXY_SOCKET"); v != "" {
+		return v, nil
+	}
+	if d := os.Getenv("XDG_RUNTIME_DIR"); d != "" {
+		return filepath.Join(d, "ssh-proxy.sock"), nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve home: %w", err)
+	}
+	return filepath.Join(home, ".local", "run", "ssh-proxy.sock"), nil
+}
+
 // EnsureSocketDir ensures the parent directory exists with safe permissions.
 func EnsureSocketDir(sock string) error {
 	dir := filepath.Dir(sock)
@@ -30,5 +46,4 @@ func EnsureSocketDir(sock string) error {
 	}
 	return nil
 }
-
 
