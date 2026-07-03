@@ -186,13 +186,14 @@ def build_podman_args(args, password_file, access_url, host_novnc_port, containe
         args.podman_hpc,
         "run",
         "--rm",
-        "--jupyter",
         "--name",
         container_name,
         "-p",
         "{}:{}:{}".format(args.host_novnc_addr, host_novnc_port, args.novnc_port),
         "-v",
         "{}:/run/secrets/vnc-password:ro".format(password_file),
+        "-v",
+        "/tmp:/tmp",
         "-e",
         "VNC_PASSWORD_PLAIN_FILE=/run/secrets/vnc-password",
         "-e",
@@ -243,12 +244,15 @@ def build_podman_args(args, password_file, access_url, host_novnc_port, containe
         run_args.extend(["--mount", mount])
 
     if args.slurm:
+        slurm_visible_volumes = ["/tmp:/tmp"] + list(args.volume)
         add_slurm_proxy_args(
             run_args,
             args.slurm_socket,
             args.dry_run,
             args.slurm_server,
             args.slurm_server_log,
+            volumes=slurm_visible_volumes,
+            mounts=args.mount,
         )
 
     extra_args = list(getattr(args, "extra_podman_args", []))

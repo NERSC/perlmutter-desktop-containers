@@ -194,7 +194,65 @@ def start_slurm_proxy_server(socket_path, slurm_server, slurm_server_log):
     )
 
 
-def add_slurm_proxy_args(run_args, slurm_socket, dry_run=False, slurm_server="", slurm_server_log=""):
+def path_is_under(parent, child):
+    parent = os.path.abspath(parent)
+    child = os.path.abspath(child)
+    return child == parent or child.startswith(parent.rstrip(os.sep) + os.sep)
+
+
+def volume_same_path_covers(volume, path):
+    parts = volume.split(":")
+    if len(parts) < 2:
+        return False
+    host_path = os.path.expandvars(os.path.expanduser(parts[0]))
+    container_path = os.path.expandvars(os.path.expanduser(parts[1]))
+    return host_path == container_path and path_is_under(host_path, path)
+
+
+def mount_same_path_covers(mount, path):
+    fields = {}
+    for field in mount.split(","):
+        key, _, value = field.partition("=")
+        if key:
+            fields[key] = value
+
+    host_path = fields.get("src") or fields.get("source")
+    container_path = fields.get("dst") or fields.get("destination") or fields.get("target")
+    if not host_path or not container_path:
+        return False
+
+    host_path = os.path.expandvars(os.path.expanduser(host_path))
+    container_path = os.path.expandvars(os.path.expanduser(container_path))
+    return host_path == container_path and path_is_under(host_path, path)
+
+
+def path_visible_through_same_path_mount(path, volumes=None, mounts=None, implicit_same_path_mounts=None):
+    volumes = volumes or []
+    mounts = mounts or []
+    implicit_same_path_mounts = implicit_same_path_mounts or ()
+
+    for mount_path in implicit_same_path_mounts:
+        if path_is_under(mount_path, path):
+            return True
+    for volume in volumes:
+        if volume_same_path_covers(volume, path):
+            return True
+    for mount in mounts:
+        if mount_same_path_covers(mount, path):
+            return True
+    return False
+
+
+def add_slurm_proxy_args(
+    run_args,
+    slurm_socket,
+    dry_run=False,
+    slurm_server="",
+    slurm_server_log="",
+    volumes=None,
+    mounts=None,
+    implicit_same_path_mounts=None,
+):
     socket_path = os.path.expandvars(os.path.expanduser(slurm_socket or default_slurm_socket()))
     if not socket_path:
         raise SystemExit("Unable to resolve Slurm CLI proxy socket path.")
@@ -202,7 +260,13 @@ def add_slurm_proxy_args(run_args, slurm_socket, dry_run=False, slurm_server="",
         raise SystemExit("Slurm CLI proxy socket contains unresolved variables: {}".format(socket_path))
     if not dry_run:
         start_slurm_proxy_server(socket_path, slurm_server, slurm_server_log)
-    run_args.extend(["-v", "{}:{}:rw".format(socket_path, socket_path)])
+    if not path_visible_through_same_path_mount(
+        socket_path,
+        volumes=volumes,
+        mounts=mounts,
+        implicit_same_path_mounts=implicit_same_path_mounts,
+    ):
+        run_args.extend(["-v", "{}:{}:rw".format(socket_path, socket_path)])
     run_args.extend(["-e", "SCLI_SOCKET={}".format(socket_path)])
 
 
@@ -600,6 +664,8 @@ def add_podman_run_args(args, password_file):
             args.dry_run,
             args.slurm_server,
             args.slurm_server_log,
+            volumes=args.volume,
+            mounts=args.mount,
         )
 
     extra_args = args.extra_podman_args
