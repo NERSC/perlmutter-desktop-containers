@@ -26,6 +26,9 @@ Options:
                           Default: vnc-novnc-DISTRO-DESKTOP.
   --display-name NAME     Kernel display name shown in Jupyter.
                           Default: VNC-DISTRO-DESKTOP.
+  --display-mode MODE     Display preset for the installed kernel. Values:
+                          default, 1080p, fhd, high. Non-default modes add a
+                          suffix to the default kernel name/display name.
   --prefix DIR            Jupyter prefix. Installs to DIR/share/jupyter/kernels/NAME.
                           Default: ${HOME}/.local
   --no-pip-install        Do not run "python3 -m pip install --user -e .".
@@ -160,6 +163,7 @@ distro="debian12"
 desktop="fvwm3"
 kernel_name=""
 display_name=""
+display_mode="default"
 prefix="${HOME}/.local"
 pip_install=1
 source_wrapper=0
@@ -172,6 +176,7 @@ prepull_only=0
 podman_hpc="${PODMAN_HPC:-podman-hpc}"
 kernel_name_set=0
 display_name_set=0
+display_mode_set=0
 distro_set=0
 desktop_set=0
 positionals=()
@@ -202,6 +207,11 @@ while [[ "$#" -gt 0 ]]; do
         --display-name)
             display_name="${2:?--display-name requires a value}"
             display_name_set=1
+            shift 2
+            ;;
+        --display-mode)
+            display_mode="${2:?--display-mode requires a value}"
+            display_mode_set=1
             shift 2
             ;;
         --prefix)
@@ -296,6 +306,20 @@ if [[ "${#positionals[@]}" -ge 2 ]]; then
     desktop_set=1
 fi
 
+case "${display_mode,,}" in
+    default|"")
+        display_mode="default"
+        ;;
+    1080p|fhd|high)
+        display_mode="${display_mode,,}"
+        ;;
+    *)
+        printf 'Unsupported display mode: %s\n\n' "${display_mode}" >&2
+        usage >&2
+        exit 2
+        ;;
+esac
+
 kernel_src="${repo_dir}/kernels/vnc-novnc"
 
 if [[ ! -f "${kernel_src}/kernel.json" ]]; then
@@ -304,8 +328,8 @@ if [[ ! -f "${kernel_src}/kernel.json" ]]; then
 fi
 
 if [[ "${all_variants}" -eq 1 ]]; then
-    if [[ "${distro_set}" -eq 1 || "${desktop_set}" -eq 1 || "${kernel_name_set}" -eq 1 || "${display_name_set}" -eq 1 || -n "${slurm_override}" || -n "${ssh_proxy_override}" ]]; then
-        printf '%s\n' '--all cannot be combined with DISTRO, DESKTOP, --distro, --desktop, --name, --display-name, --slurm, --no-slurm, --ssh-proxy, or --no-ssh-proxy.' >&2
+    if [[ "${distro_set}" -eq 1 || "${desktop_set}" -eq 1 || "${kernel_name_set}" -eq 1 || "${display_name_set}" -eq 1 || "${display_mode_set}" -eq 1 || -n "${slurm_override}" || -n "${ssh_proxy_override}" ]]; then
+        printf '%s\n' '--all cannot be combined with DISTRO, DESKTOP, --distro, --desktop, --name, --display-name, --display-mode, --slurm, --no-slurm, --ssh-proxy, or --no-ssh-proxy.' >&2
         exit 2
     fi
 fi
@@ -427,10 +451,16 @@ install_one() {
 
     if [[ -z "${install_kernel_name}" ]]; then
         install_kernel_name="vnc-novnc-${variant_slug}"
+        if [[ "${display_mode}" != "default" ]]; then
+            install_kernel_name="${install_kernel_name}-${display_mode}"
+        fi
     fi
 
     if [[ -z "${install_display_name}" ]]; then
         install_display_name="VNC-${distro}-${desktop}"
+        if [[ "${display_mode}" != "default" ]]; then
+            install_display_name="${install_display_name}-${display_mode}"
+        fi
     fi
 
     kernel_dst="${prefix}/share/jupyter/kernels/${install_kernel_name}"
@@ -446,12 +476,12 @@ install_one() {
     cp "${kernel_src}/kernel-wrapper" "${tmpdir}/${install_kernel_name}/"
     cp "${kernel_src}/vnc-novnc.yaml" "${tmpdir}/${install_kernel_name}/"
 
-    python3 - "${tmpdir}/${install_kernel_name}/kernel.json" "${tmpdir}/${install_kernel_name}/vnc-novnc.yaml" "${install_display_name}" "${image}" "${variant_slurm}" "${variant_ssh_proxy}" "${extra_podman_args[@]}" <<'PY'
+    python3 - "${tmpdir}/${install_kernel_name}/kernel.json" "${tmpdir}/${install_kernel_name}/vnc-novnc.yaml" "${install_display_name}" "${image}" "${variant_slurm}" "${variant_ssh_proxy}" "${display_mode}" "${extra_podman_args[@]}" <<'PY'
 import json
 import sys
 
-kernel_json, kernel_yaml, display_name, image, slurm_enabled, ssh_proxy_enabled = sys.argv[1:7]
-extra_podman_args = sys.argv[7:]
+kernel_json, kernel_yaml, display_name, image, slurm_enabled, ssh_proxy_enabled, display_mode = sys.argv[1:8]
+extra_podman_args = sys.argv[8:]
 pull_policy = "missing"
 slurm_volumes = [
     "/global:/global",
@@ -515,6 +545,7 @@ set_yaml_scalar(lines, "image", image)
 set_yaml_scalar(lines, "pull_policy", pull_policy)
 set_yaml_scalar(lines, "slurm", "true" if slurm_enabled == "1" else "false")
 set_yaml_scalar(lines, "ssh_proxy", "true" if ssh_proxy_enabled == "1" else "false")
+set_yaml_scalar(lines, "display_mode", display_mode)
 set_yaml_list(lines, "extra_podman_args", extra_podman_args)
 if slurm_enabled == "1":
     set_yaml_list(lines, "volume", slurm_volumes)
@@ -825,10 +856,16 @@ else
 
     if [[ "${kernel_name_set}" -ne 1 ]]; then
         kernel_name="vnc-novnc-${variant_slug}"
+        if [[ "${display_mode}" != "default" ]]; then
+            kernel_name="${kernel_name}-${display_mode}"
+        fi
     fi
 
     if [[ "${display_name_set}" -ne 1 ]]; then
         display_name="VNC-${distro}-${desktop}"
+        if [[ "${display_mode}" != "default" ]]; then
+            display_name="${display_name}-${display_mode}"
+        fi
     fi
 
     install_one "${distro}" "${desktop}" "${kernel_name}" "${display_name}"

@@ -21,6 +21,12 @@ DEFAULT_VNC_PORT = "5901"
 DEFAULT_JUPYTER_BASE_URL = "https://jupyter.nersc.gov"
 DEFAULT_JUPYTER_HOST = "jupyter.nersc.gov"
 DEFAULT_JUPYTER_HTTPS_PORT = "443"
+DISPLAY_MODES = {
+    "default": {},
+    "1080p": {"VNC_GEOMETRY": "1920x1080", "VNC_DEPTH": "32"},
+    "fhd": {"VNC_GEOMETRY": "1920x1080", "VNC_DEPTH": "32"},
+    "high": {"VNC_GEOMETRY": "1920x1080", "VNC_DEPTH": "32"},
+}
 NERSC_PROGRAMMING_ENV_VARS = (
     "HOME",
     "MODULEPATH",
@@ -42,6 +48,9 @@ VALID_CONFIG_KEYS = set(
         "host_novnc_port",
         "novnc_port",
         "vnc_port",
+        "display_mode",
+        "vnc_geometry",
+        "vnc_depth",
         "vnc_host_addr",
         "vnc_host_port",
         "password_length",
@@ -427,6 +436,22 @@ def add_env_passthrough_args(run_args, envs, names):
             run_args.extend(["-e", name])
 
 
+def add_display_mode_args(run_args, display_mode, vnc_geometry="", vnc_depth=""):
+    mode = (display_mode or "default").lower()
+    if mode not in DISPLAY_MODES:
+        raise SystemExit(
+            "display_mode must be one of: {}".format(", ".join(sorted(DISPLAY_MODES)))
+        )
+    env = dict(DISPLAY_MODES[mode])
+    if vnc_geometry:
+        env["VNC_GEOMETRY"] = vnc_geometry
+    if vnc_depth:
+        env["VNC_DEPTH"] = str(vnc_depth)
+    for name in ("VNC_GEOMETRY", "VNC_DEPTH"):
+        if name in env:
+            run_args.extend(["-e", "{}={}".format(name, env[name])])
+
+
 def add_volume_if_missing(run_args, volumes, mounts, host_path, container_path, mode="rw"):
     if not host_path or not os.path.exists(host_path):
         return
@@ -614,6 +639,9 @@ def build_defaults(config):
         "host_novnc_port": "",
         "novnc_port": DEFAULT_NOVNC_PORT,
         "vnc_port": DEFAULT_VNC_PORT,
+        "display_mode": "default",
+        "vnc_geometry": "",
+        "vnc_depth": "",
         "vnc_host_addr": "127.0.0.1",
         "vnc_host_port": DEFAULT_VNC_PORT,
         "password_length": DEFAULT_PASSWORD_LENGTH,
@@ -652,6 +680,9 @@ def build_defaults(config):
         "host_novnc_port": os.environ.get("HOST_NOVNC_PORT"),
         "novnc_port": os.environ.get("NOVNC_PORT"),
         "vnc_port": os.environ.get("VNC_PORT"),
+        "display_mode": os.environ.get("VNC_NOVNC_DISPLAY_MODE"),
+        "vnc_geometry": os.environ.get("VNC_GEOMETRY"),
+        "vnc_depth": os.environ.get("VNC_DEPTH"),
         "vnc_host_addr": os.environ.get("VNC_HOST_ADDR"),
         "vnc_host_port": os.environ.get("VNC_HOST_PORT", os.environ.get("VNC_PORT")),
         "jupyter_proxy_base_url": os.environ.get("JUPYTER_PROXY_BASE_URL"),
@@ -690,6 +721,11 @@ def build_defaults(config):
     if defaults["pull_policy"] not in ("", "always", "missing", "never", "newer"):
         raise ValueError(
             "pull_policy must be one of: always, missing, never, newer"
+        )
+    defaults["display_mode"] = defaults["display_mode"].lower()
+    if defaults["display_mode"] not in DISPLAY_MODES:
+        raise ValueError(
+            "display_mode must be one of: {}".format(", ".join(sorted(DISPLAY_MODES)))
         )
 
     return defaults
@@ -746,6 +782,12 @@ def add_podman_run_args(args, password_file):
         "-e",
         "VNC_PORT={}".format(args.vnc_port),
     ]
+    add_display_mode_args(
+        run_args,
+        args.display_mode,
+        args.vnc_geometry,
+        args.vnc_depth,
+    )
 
     run_policy = run_pull_policy(args.pull_policy)
     if run_policy:
@@ -869,6 +911,14 @@ def parse_args(argv):
     parser.add_argument("--host-novnc-port", default=defaults["host_novnc_port"])
     parser.add_argument("--novnc-port", default=defaults["novnc_port"])
     parser.add_argument("--vnc-port", default=defaults["vnc_port"])
+    parser.add_argument(
+        "--display-mode",
+        choices=tuple(sorted(DISPLAY_MODES)),
+        default=defaults["display_mode"],
+        help="Display quality preset. The 1080p/fhd/high modes set VNC_GEOMETRY=1920x1080 and VNC_DEPTH=32.",
+    )
+    parser.add_argument("--vnc-geometry", default=defaults["vnc_geometry"])
+    parser.add_argument("--vnc-depth", default=defaults["vnc_depth"])
     parser.add_argument("--vnc-host-addr", default=defaults["vnc_host_addr"])
     parser.add_argument(
         "--vnc-host-port",

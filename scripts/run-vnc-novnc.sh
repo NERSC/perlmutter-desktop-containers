@@ -12,6 +12,9 @@ JUPYTER_PROXY_PREFIX="${JUPYTER_PROXY_PREFIX:-${JUPYTERHUB_SERVICE_PREFIX:-}}"
 JUPYTER_PROXY_USER="${JUPYTER_PROXY_USER:-${USER:-}}"
 JUPYTER_PROXY_SERVER="${JUPYTER_PROXY_SERVER:-}"
 VNC_PORT="${VNC_PORT:-5901}"
+DISPLAY_MODE="${VNC_NOVNC_DISPLAY_MODE:-${DISPLAY_MODE:-default}}"
+VNC_GEOMETRY="${VNC_GEOMETRY:-}"
+VNC_DEPTH="${VNC_DEPTH:-}"
 VNC_HOST_ADDR="${VNC_HOST_ADDR:-127.0.0.1}"
 VNC_HOST_PORT="${VNC_HOST_PORT:-$VNC_PORT}"
 EXPOSE_VNC="${EXPOSE_VNC:-0}"
@@ -67,12 +70,26 @@ while [[ "$#" -gt 0 ]]; do
             SSH_PROXY_SERVER_LOG="${2:?--ssh-proxy-server-log requires a value}"
             shift 2
             ;;
+        --display-mode)
+            DISPLAY_MODE="${2:?--display-mode requires a value}"
+            shift 2
+            ;;
+        --vnc-geometry)
+            VNC_GEOMETRY="${2:?--vnc-geometry requires a value}"
+            shift 2
+            ;;
+        --vnc-depth)
+            VNC_DEPTH="${2:?--vnc-depth requires a value}"
+            shift 2
+            ;;
         -h|--help)
             cat <<'EOF'
 Usage: scripts/run-vnc-novnc.sh [--slurm] [--slurm-socket PATH]
                                 [--slurm-server PATH] [--slurm-server-log PATH]
                                 [--ssh-proxy] [--ssh-proxy-socket PATH]
                                 [--ssh-proxy-server PATH] [--ssh-proxy-server-log PATH]
+                                [--display-mode default|1080p|fhd|high]
+                                [--vnc-geometry WIDTHxHEIGHT] [--vnc-depth DEPTH]
 
 Legacy shell helper for running the default VNC/noVNC image.
 Prefer scripts/run-vnc-novnc.py for full option support.
@@ -85,6 +102,19 @@ EOF
             ;;
     esac
 done
+
+case "${DISPLAY_MODE,,}" in
+    default|"")
+        ;;
+    1080p|fhd|high)
+        VNC_GEOMETRY="${VNC_GEOMETRY:-1920x1080}"
+        VNC_DEPTH="${VNC_DEPTH:-32}"
+        ;;
+    *)
+        printf 'Unsupported display mode: %s\n' "${DISPLAY_MODE}" >&2
+        exit 2
+        ;;
+esac
 
 urlencode() {
     if command -v python3 >/dev/null 2>&1; then
@@ -288,6 +318,13 @@ run_args=(
     -e "NOVNC_PORT=${CONTAINER_NOVNC_PORT}"
     -e "VNC_PORT=${VNC_PORT}"
 )
+
+if [[ -n "${VNC_GEOMETRY}" ]]; then
+    run_args+=( -e "VNC_GEOMETRY=${VNC_GEOMETRY}" )
+fi
+if [[ -n "${VNC_DEPTH}" ]]; then
+    run_args+=( -e "VNC_DEPTH=${VNC_DEPTH}" )
+fi
 
 case "${EXPOSE_VNC,,}" in
     1|true|yes|y|on)

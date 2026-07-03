@@ -5,6 +5,7 @@ image: ghcr.io/dingp/vnc-novnc-container:debian-12-main
 userns: keep-id
 keep_groups: true
 pull_policy: missing
+display_mode: default
 slurm: false
 ssh_proxy: false
 

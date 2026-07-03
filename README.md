@@ -288,6 +288,7 @@ YAML keys use long option names with underscores instead of dashes:
 userns: keep-id
 keep_groups: true
 pull_policy: missing
+display_mode: default
 
 volume:
   - "/global:/global"
@@ -321,6 +322,9 @@ Common settings:
 | `HOST_NOVNC_PORT` | random | Host port for noVNC. |
 | `NOVNC_PORT` | `6080` | noVNC port inside the container. |
 | `VNC_PORT` | `5901` | VNC server port inside the container. |
+| `VNC_NOVNC_DISPLAY_MODE` | `default` | Display preset. Use `1080p`, `fhd`, or `high` for `1920x1080` with `VNC_DEPTH=32`. |
+| `VNC_GEOMETRY` | image default | Explicit VNC desktop size, for example `1920x1080`. |
+| `VNC_DEPTH` | image default | Explicit VNC color depth. |
 | `EXPOSE_VNC` | `0` | Set to `1` to also publish the raw VNC server port. |
 | `VNC_PASSWORD_LENGTH` | `8` | Length of the generated one-time VNC password. |
 
@@ -456,6 +460,7 @@ Useful installer options:
 | `--prepull-only` | Pull or refresh selected images without installing kernelspecs. |
 | `--podman-hpc COMMAND` | Choose the `podman-hpc` command used by `--prepull`. |
 | `--source-wrapper` | Make the installed kernel wrapper import `vnc_novnc` directly from this checkout. |
+| `--display-mode MODE` | Set the kernelspec display preset. Use `1080p`, `fhd`, or `high` for `1920x1080` with `VNC_DEPTH=32`; non-default modes get a suffix in the default kernelspec name. |
 | `--slurm`, `--no-slurm` | Enable or disable `scli` socket setup in the generated kernelspec. The `ubuntu24.04 xfce-slurm` variant enables it automatically. |
 | `--ssh-proxy`, `--no-ssh-proxy` | Enable or disable host SSH proxy socket setup in the generated kernelspec. Slurm image variants enable it automatically. |
 | `--no-pip-install` | Copy the kernelspec without running `pip install`. |
@@ -471,6 +476,7 @@ Examples:
 scripts/install-jupyter-kernel.sh ubuntu24.04 xfce --force
 scripts/install-jupyter-kernel.sh ubuntu24.04 xfce-slurm --force
 scripts/install-jupyter-kernel.sh opensuse15.6 xfce --force
+scripts/install-jupyter-kernel.sh --display-mode 1080p opensuse15.6 xfce-slurm --force
 scripts/install-jupyter-kernel.sh --all --force
 scripts/install-jupyter-kernel.sh --all --prepull --force
 scripts/install-jupyter-kernel.sh ubuntu24.04 xfce --prepull-only
@@ -540,6 +546,7 @@ image: ghcr.io/dingp/vnc-novnc-container:debian-12-main
 userns: keep-id
 keep_groups: true
 pull_policy: missing
+display_mode: default
 
 volume:
   - "/global:/global"
