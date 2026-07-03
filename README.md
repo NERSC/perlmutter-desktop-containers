@@ -220,12 +220,19 @@ project. Installing a Slurm-enabled kernelspec builds the host-side
 `${HOME}/bin/ssh-proxy-server`. With `--slurm`, the launcher starts
 `scli-server` if the socket is not already present, then mounts the Unix socket
 and sets `SCLI_SOCKET` inside the container. With `--ssh-proxy`, it does the
-same for `ssh-proxy-server` and `SSH_PROXY_SOCKET`:
+same for `ssh-proxy-server` and `SSH_PROXY_SOCKET`. Socket defaults are
+hostname-qualified to avoid stale sockets when `${HOME}` is shared across login
+nodes:
+
+```text
+SCLI_SOCKET, then ${XDG_RUNTIME_DIR}/scli-$(hostname).sock,
+then /tmp/vnc-novnc-$(id -u)/scli-$(hostname).sock
+
+SSH_PROXY_SOCKET, then ${XDG_RUNTIME_DIR}/ssh-proxy-$(hostname).sock,
+then /tmp/vnc-novnc-$(id -u)/ssh-proxy-$(hostname).sock
+```
 
 ```sh
-export SCLI_SOCKET="${XDG_RUNTIME_DIR}/scli.sock"
-export SSH_PROXY_SOCKET="${XDG_RUNTIME_DIR}/ssh-proxy.sock"
-
 PYTHONPATH="${PWD}" scripts/run-vnc-novnc.py \
   --config scripts/run-vnc-novnc.yaml \
   --image registry.nersc.gov/dseg/novnc:opensuse15.6-xfce-slurm \

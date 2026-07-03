@@ -12,8 +12,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"sync"
+	"syscall"
 
 	"github.com/creack/pty"
 
@@ -33,7 +33,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("socket path: %v", err)
 	}
-	if socketAlreadyExists(sock) {
+	if socketAlreadyExists(sock) && common.SocketAcceptsConnection(sock) {
 		if *verbose {
 			log.Printf("scli-server socket already exists, not starting: %s", sock)
 		}
@@ -165,9 +165,9 @@ func handleConn(c net.Conn, allowed map[string]bool, verbose bool) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	var (
-		stdin io.WriteCloser
-		stdout io.ReadCloser
-		stderr io.ReadCloser
+		stdin   io.WriteCloser
+		stdout  io.ReadCloser
+		stderr  io.ReadCloser
 		ptyFile *os.File
 	)
 
@@ -343,4 +343,3 @@ func posixQuote(s string) string {
 	// Replace ' with '\'' sequence
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
-

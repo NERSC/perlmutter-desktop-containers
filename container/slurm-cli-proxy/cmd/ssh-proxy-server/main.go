@@ -33,7 +33,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("socket path: %v", err)
 	}
-	if socketAlreadyExists(sock) {
+	if socketAlreadyExists(sock) && common.SocketAcceptsConnection(sock) {
 		if *verbose {
 			log.Printf("ssh-proxy-server socket already exists, not starting: %s", sock)
 		}

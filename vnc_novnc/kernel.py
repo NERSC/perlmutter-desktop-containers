@@ -15,6 +15,7 @@ from .runner import (
     DEFAULT_NOVNC_PORT,
     DEFAULT_PASSWORD_LENGTH,
     DEFAULT_VNC_PORT,
+    add_ssh_proxy_args,
     add_slurm_proxy_args,
     build_defaults,
     add_keep_id_args,
@@ -154,6 +155,28 @@ def build_parser(defaults):
         default=defaults["slurm_server_log"],
         help="Path to the host scli-server startup log.",
     )
+    parser.add_argument(
+        "--ssh-proxy",
+        action="store_true",
+        default=defaults["ssh_proxy"],
+        help="Mount an ssh-proxy-server Unix socket and set SSH_PROXY_SOCKET inside the container.",
+    )
+    parser.add_argument("--no-ssh-proxy", action="store_false", dest="ssh_proxy")
+    parser.add_argument(
+        "--ssh-proxy-socket",
+        default=defaults["ssh_proxy_socket"],
+        help="Path to the host ssh-proxy-server Unix socket.",
+    )
+    parser.add_argument(
+        "--ssh-proxy-server",
+        default=defaults["ssh_proxy_server"],
+        help="Path to host ssh-proxy-server.",
+    )
+    parser.add_argument(
+        "--ssh-proxy-server-log",
+        default=defaults["ssh_proxy_server_log"],
+        help="Path to the host ssh-proxy-server startup log.",
+    )
     parser.add_argument("--dry-run", action="store_true", default=defaults["dry_run"])
     parser.add_argument("-f", "--connection-file", default="")
     parser.add_argument("kernel_args", nargs=argparse.REMAINDER)
@@ -252,6 +275,18 @@ def build_podman_args(args, password_file, access_url, host_novnc_port, containe
             args.slurm_server,
             args.slurm_server_log,
             volumes=slurm_visible_volumes,
+            mounts=args.mount,
+        )
+
+    if args.ssh_proxy:
+        ssh_proxy_visible_volumes = ["/tmp:/tmp"] + list(args.volume)
+        add_ssh_proxy_args(
+            run_args,
+            args.ssh_proxy_socket,
+            args.dry_run,
+            args.ssh_proxy_server,
+            args.ssh_proxy_server_log,
+            volumes=ssh_proxy_visible_volumes,
             mounts=args.mount,
         )
 

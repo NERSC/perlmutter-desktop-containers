@@ -663,6 +663,29 @@ vnc_novnc_detect_slurm() {
     fi
 }
 
+vnc_novnc_socket_is_live() {
+    [ -S "$1" ] || return 1
+    python3 - "$1" <<'VNC_NOVNC_SOCKET_PY' >/dev/null 2>&1
+import socket
+import sys
+
+sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+sock.settimeout(0.5)
+try:
+    sock.connect(sys.argv[1])
+except OSError:
+    raise SystemExit(1)
+finally:
+    sock.close()
+VNC_NOVNC_SOCKET_PY
+}
+
+vnc_novnc_remove_stale_socket() {
+    if [ -S "$1" ] && ! vnc_novnc_socket_is_live "$1"; then
+        rm -f "$1"
+    fi
+}
+
 vnc_novnc_start_scli_server() {
     case "$VNC_NOVNC_SLURM" in
         1|true|True|TRUE|yes|Yes|YES|on|On|ON) ;;
@@ -673,22 +696,23 @@ vnc_novnc_start_scli_server() {
     fi
 
     if [ -z "$slurm_socket" ]; then
+        socket_host="$(hostname 2>/dev/null || printf unknown)"
+        socket_host="$(printf '%s' "$socket_host" | tr -c 'A-Za-z0-9_.-' '_')"
         if [ -n "${SCLI_SOCKET:-}" ]; then
             slurm_socket="$SCLI_SOCKET"
         elif [ -n "${XDG_RUNTIME_DIR:-}" ]; then
-            slurm_socket="${XDG_RUNTIME_DIR}/scli.sock"
-        elif [ -n "${HOME:-}" ]; then
-            slurm_socket="${HOME}/.local/run/scli.sock"
+            slurm_socket="${XDG_RUNTIME_DIR}/scli-${socket_host}.sock"
         else
-            slurm_socket="/tmp/scli.sock"
+            slurm_socket="/tmp/vnc-novnc-$(id -u)/scli-${socket_host}.sock"
         fi
     fi
     SCLI_SOCKET="$slurm_socket"
     export SCLI_SOCKET VNC_NOVNC_SLURM
 
-    if [ -S "$SCLI_SOCKET" ]; then
+    if vnc_novnc_socket_is_live "$SCLI_SOCKET"; then
         return 0
     fi
+    vnc_novnc_remove_stale_socket "$SCLI_SOCKET"
 
     scli_server="${SCLI_SERVER:-${HOME}/bin/scli-server}"
     if [ ! -x "$scli_server" ]; then
@@ -731,22 +755,23 @@ vnc_novnc_start_ssh_proxy_server() {
     fi
 
     if [ -z "$ssh_proxy_socket" ]; then
+        socket_host="$(hostname 2>/dev/null || printf unknown)"
+        socket_host="$(printf '%s' "$socket_host" | tr -c 'A-Za-z0-9_.-' '_')"
         if [ -n "${SSH_PROXY_SOCKET:-}" ]; then
             ssh_proxy_socket="$SSH_PROXY_SOCKET"
         elif [ -n "${XDG_RUNTIME_DIR:-}" ]; then
-            ssh_proxy_socket="${XDG_RUNTIME_DIR}/ssh-proxy.sock"
-        elif [ -n "${HOME:-}" ]; then
-            ssh_proxy_socket="${HOME}/.local/run/ssh-proxy.sock"
+            ssh_proxy_socket="${XDG_RUNTIME_DIR}/ssh-proxy-${socket_host}.sock"
         else
-            ssh_proxy_socket="/tmp/ssh-proxy.sock"
+            ssh_proxy_socket="/tmp/vnc-novnc-$(id -u)/ssh-proxy-${socket_host}.sock"
         fi
     fi
     SSH_PROXY_SOCKET="$ssh_proxy_socket"
     export SSH_PROXY_SOCKET VNC_NOVNC_SSH_PROXY
 
-    if [ -S "$SSH_PROXY_SOCKET" ]; then
+    if vnc_novnc_socket_is_live "$SSH_PROXY_SOCKET"; then
         return 0
     fi
+    vnc_novnc_remove_stale_socket "$SSH_PROXY_SOCKET"
 
     ssh_proxy_server="${SSH_PROXY_SERVER:-${HOME}/bin/ssh-proxy-server}"
     if [ ! -x "$ssh_proxy_server" ]; then

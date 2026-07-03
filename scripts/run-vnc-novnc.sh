@@ -208,11 +208,14 @@ default_scli_socket() {
         printf '%s\n' "${SCLI_SOCKET}"
         return
     fi
+    local host suffix
+    host="$(hostname 2>/dev/null || printf unknown)"
+    suffix="${host//[^A-Za-z0-9_.-]/_}"
     if [[ -n "${XDG_RUNTIME_DIR:-}" ]]; then
-        printf '%s/scli.sock\n' "${XDG_RUNTIME_DIR}"
+        printf '%s/scli-%s.sock\n' "${XDG_RUNTIME_DIR}" "${suffix}"
         return
     fi
-    printf '%s/.local/run/scli.sock\n' "${HOME:-}"
+    printf '/tmp/vnc-novnc-%s/scli-%s.sock\n' "$(id -u)" "${suffix}"
 }
 
 default_ssh_proxy_socket() {
@@ -220,17 +223,44 @@ default_ssh_proxy_socket() {
         printf '%s\n' "${SSH_PROXY_SOCKET}"
         return
     fi
+    local host suffix
+    host="$(hostname 2>/dev/null || printf unknown)"
+    suffix="${host//[^A-Za-z0-9_.-]/_}"
     if [[ -n "${XDG_RUNTIME_DIR:-}" ]]; then
-        printf '%s/ssh-proxy.sock\n' "${XDG_RUNTIME_DIR}"
+        printf '%s/ssh-proxy-%s.sock\n' "${XDG_RUNTIME_DIR}" "${suffix}"
         return
     fi
-    printf '%s/.local/run/ssh-proxy.sock\n' "${HOME:-}"
+    printf '/tmp/vnc-novnc-%s/ssh-proxy-%s.sock\n' "$(id -u)" "${suffix}"
+}
+
+socket_is_live() {
+    [[ -S "$1" ]] || return 1
+    python3 - "$1" <<'PY' >/dev/null 2>&1
+import socket
+import sys
+
+sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+sock.settimeout(0.5)
+try:
+    sock.connect(sys.argv[1])
+except OSError:
+    raise SystemExit(1)
+finally:
+    sock.close()
+PY
+}
+
+remove_stale_socket() {
+    if [[ -S "$1" ]] && ! socket_is_live "$1"; then
+        rm -f "$1"
+    fi
 }
 
 start_scli_server() {
-    if [[ -S "${SCLI_SOCKET}" ]]; then
+    if socket_is_live "${SCLI_SOCKET}"; then
         return 0
     fi
+    remove_stale_socket "${SCLI_SOCKET}"
 
     if [[ ! -x "${SCLI_SERVER}" ]]; then
         printf 'scli-server is not executable: %s\n' "${SCLI_SERVER}" >&2
@@ -261,9 +291,10 @@ start_scli_server() {
 }
 
 start_ssh_proxy_server() {
-    if [[ -S "${SSH_PROXY_SOCKET}" ]]; then
+    if socket_is_live "${SSH_PROXY_SOCKET}"; then
         return 0
     fi
+    remove_stale_socket "${SSH_PROXY_SOCKET}"
 
     if [[ ! -x "${SSH_PROXY_SERVER}" ]]; then
         printf 'ssh-proxy-server is not executable: %s\n' "${SSH_PROXY_SERVER}" >&2

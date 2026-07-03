@@ -44,8 +44,12 @@ flowchart LR
 Both sides use the same default socket lookup order:
 
 1. `SSH_PROXY_SOCKET`
-2. `${XDG_RUNTIME_DIR}/ssh-proxy.sock`
-3. `${HOME}/.local/run/ssh-proxy.sock`
+2. `${XDG_RUNTIME_DIR}/ssh-proxy-<hostname>.sock`
+3. `/tmp/vnc-novnc-<uid>/ssh-proxy-<hostname>.sock`
+
+The hostname suffix avoids collisions when a user has concurrent sessions on
+multiple login nodes. The `/tmp` fallback keeps the socket node-local when no
+usable runtime directory is provided.
 
 The launcher or kernelspec wrapper starts `ssh-proxy-server` only when the
 socket is missing. If the socket already exists, startup is skipped so multiple
