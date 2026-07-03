@@ -20,7 +20,16 @@ DEFAULT_VNC_PORT = "5901"
 DEFAULT_JUPYTER_BASE_URL = "https://jupyter.nersc.gov"
 DEFAULT_JUPYTER_HOST = "jupyter.nersc.gov"
 DEFAULT_JUPYTER_HTTPS_PORT = "443"
-NERSC_PROGRAMMING_ENV_VARS = ("HOME", "MODULEPATH", "MODULEPATH_ROOT", "MODULESHOME")
+NERSC_PROGRAMMING_ENV_VARS = (
+    "HOME",
+    "MODULEPATH",
+    "MODULEPATH_ROOT",
+    "MODULESHOME",
+    "PE_ENV",
+    "LMOD_FAMILY_MPI",
+    "LMOD_FAMILY_CUDATOOLKIT",
+    "LMOD_FAMILY_CUDATOOLKIT_VERSION",
+)
 LIST_CONFIG_KEYS = ("volume", "mount", "env", "group_add", "extra_podman_args")
 BOOL_CONFIG_KEYS = ("expose_vnc", "userns_keep_id", "keep_groups", "dry_run", "slurm")
 INT_CONFIG_KEYS = ("password_length",)

@@ -266,9 +266,9 @@ Open the printed noVNC URL and enter the printed one-time VNC password.
 ## Runner Configuration
 
 The included `scripts/run-vnc-novnc.yaml` uses `--userns=keep-id`,
-`--group-add=keep-groups`, and bind mounts `$HOME`, `$SCRATCH`, and `$CFS` into
-the same paths inside the container. Environment variables in YAML strings are
-expanded on the host when the script starts.
+`--group-add=keep-groups`, and bind mounts the NERSC global filesystem,
+`$SCRATCH`, `$CFS`, `/opt`, and the host `/etc/environment`. Environment
+variables in YAML strings are expanded on the host when the script starts.
 
 YAML keys use long option names with underscores instead of dashes:
 
@@ -278,9 +278,21 @@ keep_groups: true
 pull_policy: missing
 
 volume:
-  - "${HOME}:${HOME}:rw"
+  - "/global:/global"
   - "${SCRATCH}:${SCRATCH}:rw"
   - "${CFS}:${CFS}:rw"
+  - "/opt:/opt"
+  - "/etc/environment:/etc/environment:ro"
+
+env:
+  - "HOME"
+  - "MODULEPATH"
+  - "MODULEPATH_ROOT"
+  - "MODULESHOME"
+  - "PE_ENV"
+  - "LMOD_FAMILY_MPI"
+  - "LMOD_FAMILY_CUDATOOLKIT"
+  - "LMOD_FAMILY_CUDATOOLKIT_VERSION"
 ```
 
 Precedence is: built-in defaults, YAML config, environment variables, then
@@ -479,13 +491,16 @@ The wrapper:
 - Publishes noVNC on the selected host port.
 - Names the container and explicitly stops/removes it if the host wrapper
   receives `INT`, `TERM`, or `HUP`.
-- Uses `podman-hpc run --rm --jupyter`.
+- Mounts `/tmp` directly for Jupyter runtime files.
 - Passes `--userns=keep-id` and `--group-add=keep-groups` from the YAML config.
 - Mounts the `scli-server` Unix socket and sets `SCLI_SOCKET` when `slurm: true`
   is set in the YAML config.
 - Adds a `--passwd-entry` for the host UID when `keep-id` is active so the
   notebook user resolves to `/bin/bash` inside the container.
-- Mounts `$SCRATCH` and `$CFS` from the YAML config.
+- Mounts `/global`, `$SCRATCH`, `$CFS`, `/opt`, and the host environment file
+  from the YAML config.
+- Passes the NERSC module and programming environment variables from the YAML
+  config.
 - Passes non-secret noVNC connection metadata into the container.
 
 Inside the container, `vnc-novnc-jupyter-kernel` starts VNC/noVNC in the
@@ -512,12 +527,25 @@ keep_groups: true
 pull_policy: missing
 
 volume:
+  - "/global:/global"
   - "${SCRATCH}:${SCRATCH}:rw"
   - "${CFS}:${CFS}:rw"
+  - "/opt:/opt"
+  - "/etc/environment:/etc/environment:ro"
+
+env:
+  - "HOME"
+  - "MODULEPATH"
+  - "MODULEPATH_ROOT"
+  - "MODULESHOME"
+  - "PE_ENV"
+  - "LMOD_FAMILY_MPI"
+  - "LMOD_FAMILY_CUDATOOLKIT"
+  - "LMOD_FAMILY_CUDATOOLKIT_VERSION"
 ```
 
-`$HOME` and `/tmp` are not listed in the kernel YAML because
-`podman-hpc --jupyter` handles those mounts.
+`/tmp` is added directly by the Jupyter kernel wrapper. `$HOME` on Perlmutter is
+covered by the `/global:/global` mount.
 
 ## Desktop Notes
 

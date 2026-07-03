@@ -410,6 +410,10 @@ slurm_env = [
     "MODULEPATH",
     "MODULEPATH_ROOT",
     "MODULESHOME",
+    "PE_ENV",
+    "LMOD_FAMILY_MPI",
+    "LMOD_FAMILY_CUDATOOLKIT",
+    "LMOD_FAMILY_CUDATOOLKIT_VERSION",
 ]
 with open(kernel_json) as handle:
     data = json.load(handle)
