@@ -116,6 +116,17 @@ RUN \
     rm -f /etc/apt/sources.list.d/debian-bookworm.list /etc/apt/preferences.d/debian-chromium && \
     rm -rf /var/lib/apt/lists/* /tmp/sshproxy.tar.gz
 
+# Install Lmod so interactive shells have the module/ml commands available.
+RUN \
+    set -eu; \
+    apt-get update && \
+    apt-get install --yes --no-install-recommends lmod && \
+    printf '%s\n' '[ -r /etc/profile.d/lmod.sh ] && . /etc/profile.d/lmod.sh' \
+        > /etc/bash.bashrc.d-vnc-novnc-lmod && \
+    cat /etc/bash.bashrc.d-vnc-novnc-lmod >> /etc/bash.bashrc && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
 COPY container/vnc/vnc-novnc-entrypoint /usr/local/bin/vnc-novnc-entrypoint
 COPY container/kernel/vnc-novnc-jupyter-kernel /usr/local/bin/vnc-novnc-jupyter-kernel
 COPY vnc_novnc /usr/local/lib/vnc-novnc/vnc_novnc
