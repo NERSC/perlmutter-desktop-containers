@@ -17,7 +17,7 @@ Options:
                           Default: debian12
   --desktop DESKTOP       Desktop environment. Values depend on distro:
                           debian12: fvwm3, xfce
-                          ubuntu24.04: fvwm3, xfce
+                          ubuntu24.04: fvwm3, xfce, xfce-slurm
                           ubuntu: gpu-xfce
                           alma9: fvwm3, xfce
                           opensuse15.6: xfce
@@ -30,6 +30,9 @@ Options:
                           Default: ${HOME}/.local
   --no-pip-install        Do not run "python3 -m pip install --user -e .".
   --source-wrapper        Install a wrapper that imports vnc_novnc from this checkout.
+  --slurm                 Enable scli socket setup in the generated kernelspec.
+                          Automatically enabled for slurm-cli image variants.
+  --no-slurm              Disable scli socket setup in the generated kernelspec.
   --all                   Install one kernelspec for every supported variant.
   --prepull               Run "podman-hpc pull IMAGE" for each installed image.
   --prepull-only          Only run "podman-hpc pull IMAGE"; do not install kernelspecs.
@@ -48,6 +51,7 @@ Supported variants:
   debian12      xfce   ghcr.io/dingp/vnc-novnc-container:debian-12-xfce-main
   ubuntu24.04   fvwm3  ghcr.io/dingp/vnc-novnc-container:ubuntu-24.04-fvwm3-main
   ubuntu24.04   xfce   ghcr.io/dingp/vnc-novnc-container:ubuntu-24.04-xfce-main
+  ubuntu24.04   xfce-slurm ghcr.io/dingp/vnc-novnc-container:ubuntu-24.04-xfce-slurm-main
   ubuntu        gpu-xfce ghcr.io/dingp/vnc-novnc-container:ubuntu-gpu-xfce-main
   alma9         fvwm3  ghcr.io/dingp/vnc-novnc-container:alma-9-fvwm3-main
   alma9         xfce   ghcr.io/dingp/vnc-novnc-container:alma-9-xfce-main
@@ -72,9 +76,10 @@ canonical_distro() {
 
 canonical_desktop() {
     case "$1" in
-        fvwm3|xfce|gpu-xfce) printf '%s\n' "$1" ;;
+        fvwm3|xfce|xfce-slurm|gpu-xfce) printf '%s\n' "$1" ;;
         XFCE) printf 'xfce\n' ;;
         FVWM3) printf 'fvwm3\n' ;;
+        XFCE-SLURM|XFCE_SLURM) printf 'xfce-slurm\n' ;;
         GPU-XFCE|GPU_XFCE) printf 'gpu-xfce\n' ;;
         *)
             printf 'Unsupported desktop: %s\n\n' "$1" >&2
@@ -86,6 +91,7 @@ canonical_desktop() {
 
 set_variant_metadata() {
     extra_podman_args=()
+    variant_slurm=0
 
     case "${distro}:${desktop}" in
         debian12:fvwm3)
@@ -103,6 +109,11 @@ set_variant_metadata() {
         ubuntu24.04:xfce)
             image="ghcr.io/dingp/vnc-novnc-container:ubuntu-24.04-xfce-main"
             variant_slug="ubuntu24.04-xfce"
+            ;;
+        ubuntu24.04:xfce-slurm)
+            image="ghcr.io/dingp/vnc-novnc-container:ubuntu-24.04-xfce-slurm-main"
+            variant_slug="ubuntu24.04-xfce-slurm"
+            variant_slurm=1
             ;;
         ubuntu:gpu-xfce)
             image="ghcr.io/dingp/vnc-novnc-container:ubuntu-gpu-xfce-main"
@@ -140,6 +151,7 @@ display_name=""
 prefix="${HOME}/.local"
 pip_install=1
 source_wrapper=0
+slurm_override=""
 force=0
 all_variants=0
 prepull=0
@@ -152,6 +164,7 @@ desktop_set=0
 positionals=()
 prepulled_images=()
 extra_podman_args=()
+variant_slurm=0
 
 while [[ "$#" -gt 0 ]]; do
     case "$1" in
@@ -185,6 +198,14 @@ while [[ "$#" -gt 0 ]]; do
             ;;
         --source-wrapper)
             source_wrapper=1
+            shift
+            ;;
+        --slurm)
+            slurm_override=1
+            shift
+            ;;
+        --no-slurm)
+            slurm_override=0
             shift
             ;;
         --all)
@@ -259,8 +280,8 @@ if [[ ! -f "${kernel_src}/kernel.json" ]]; then
 fi
 
 if [[ "${all_variants}" -eq 1 ]]; then
-    if [[ "${distro_set}" -eq 1 || "${desktop_set}" -eq 1 || "${kernel_name_set}" -eq 1 || "${display_name_set}" -eq 1 ]]; then
-        printf '%s\n' '--all cannot be combined with DISTRO, DESKTOP, --distro, --desktop, --name, or --display-name.' >&2
+    if [[ "${distro_set}" -eq 1 || "${desktop_set}" -eq 1 || "${kernel_name_set}" -eq 1 || "${display_name_set}" -eq 1 || -n "${slurm_override}" ]]; then
+        printf '%s\n' '--all cannot be combined with DISTRO, DESKTOP, --distro, --desktop, --name, --display-name, --slurm, or --no-slurm.' >&2
         exit 2
     fi
 fi
@@ -310,6 +331,9 @@ install_one() {
     distro="$(canonical_distro "${install_distro}")"
     desktop="$(canonical_desktop "${install_desktop}")"
     set_variant_metadata
+    if [[ -n "${slurm_override}" ]]; then
+        variant_slurm="${slurm_override}"
+    fi
 
     if [[ "${prepull}" -eq 1 ]]; then
         prepull_image "${image}"
@@ -336,12 +360,12 @@ install_one() {
     cp "${kernel_src}/kernel-wrapper" "${tmpdir}/${install_kernel_name}/"
     cp "${kernel_src}/vnc-novnc.yaml" "${tmpdir}/${install_kernel_name}/"
 
-    python3 - "${tmpdir}/${install_kernel_name}/kernel.json" "${tmpdir}/${install_kernel_name}/vnc-novnc.yaml" "${install_display_name}" "${image}" "${extra_podman_args[@]}" <<'PY'
+    python3 - "${tmpdir}/${install_kernel_name}/kernel.json" "${tmpdir}/${install_kernel_name}/vnc-novnc.yaml" "${install_display_name}" "${image}" "${variant_slurm}" "${extra_podman_args[@]}" <<'PY'
 import json
 import sys
 
-kernel_json, kernel_yaml, display_name, image = sys.argv[1:5]
-extra_podman_args = sys.argv[5:]
+kernel_json, kernel_yaml, display_name, image, slurm_enabled = sys.argv[1:6]
+extra_podman_args = sys.argv[6:]
 pull_policy = "missing"
 with open(kernel_json) as handle:
     data = json.load(handle)
@@ -386,6 +410,7 @@ with open(kernel_yaml) as handle:
 
 set_yaml_scalar(lines, "image", image)
 set_yaml_scalar(lines, "pull_policy", pull_policy)
+set_yaml_scalar(lines, "slurm", "true" if slurm_enabled == "1" else "false")
 set_yaml_list(lines, "extra_podman_args", extra_podman_args)
 
 with open(kernel_yaml, "w") as handle:
@@ -440,6 +465,7 @@ if [[ "${prepull_only}" -eq 1 ]]; then
         prepull_one debian12 xfce
         prepull_one ubuntu24.04 fvwm3
         prepull_one ubuntu24.04 xfce
+        prepull_one ubuntu24.04 xfce-slurm
         prepull_one ubuntu gpu-xfce
         prepull_one alma9 fvwm3
         prepull_one alma9 xfce
@@ -457,6 +483,7 @@ if [[ "${all_variants}" -eq 1 ]]; then
     install_one debian12 xfce
     install_one ubuntu24.04 fvwm3
     install_one ubuntu24.04 xfce
+    install_one ubuntu24.04 xfce-slurm
     install_one ubuntu gpu-xfce
     install_one alma9 fvwm3
     install_one alma9 xfce

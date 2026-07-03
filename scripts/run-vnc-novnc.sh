@@ -16,6 +16,38 @@ VNC_HOST_ADDR="${VNC_HOST_ADDR:-127.0.0.1}"
 VNC_HOST_PORT="${VNC_HOST_PORT:-$VNC_PORT}"
 EXPOSE_VNC="${EXPOSE_VNC:-0}"
 VNC_PASSWORD_LENGTH="${VNC_PASSWORD_LENGTH:-8}"
+SLURM="${SLURM:-${VNC_NOVNC_SLURM:-0}}"
+SCLI_SOCKET="${SCLI_SOCKET:-}"
+
+while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+        --slurm)
+            SLURM=1
+            shift
+            ;;
+        --no-slurm)
+            SLURM=0
+            shift
+            ;;
+        --slurm-socket)
+            SCLI_SOCKET="${2:?--slurm-socket requires a value}"
+            shift 2
+            ;;
+        -h|--help)
+            cat <<'EOF'
+Usage: scripts/run-vnc-novnc.sh [--slurm] [--slurm-socket PATH]
+
+Legacy shell helper for running the default VNC/noVNC image.
+Prefer scripts/run-vnc-novnc.py for full option support.
+EOF
+            exit 0
+            ;;
+        *)
+            printf 'Unknown option: %s\n' "$1" >&2
+            exit 2
+            ;;
+    esac
+done
 
 urlencode() {
     if command -v python3 >/dev/null 2>&1; then
@@ -104,6 +136,18 @@ PY
     printf '%s\n' "$((49152 + RANDOM % 11848))"
 }
 
+default_scli_socket() {
+    if [[ -n "${SCLI_SOCKET}" ]]; then
+        printf '%s\n' "${SCLI_SOCKET}"
+        return
+    fi
+    if [[ -n "${XDG_RUNTIME_DIR:-}" ]]; then
+        printf '%s/scli.sock\n' "${XDG_RUNTIME_DIR}"
+        return
+    fi
+    printf '%s/.local/run/scli.sock\n' "${HOME:-}"
+}
+
 if [[ -z "${HOST_NOVNC_PORT}" ]]; then
     HOST_NOVNC_PORT="$(random_port)"
 fi
@@ -133,6 +177,18 @@ run_args=(
 case "${EXPOSE_VNC,,}" in
     1|true|yes|y|on)
         run_args+=( -p "${VNC_HOST_ADDR}:${VNC_HOST_PORT}:${VNC_PORT}" )
+        ;;
+esac
+
+case "${SLURM,,}" in
+    1|true|yes|y|on)
+        SCLI_SOCKET="$(default_scli_socket)"
+        if [[ ! -S "${SCLI_SOCKET}" ]]; then
+            printf 'Slurm CLI proxy socket does not exist: %s\n' "${SCLI_SOCKET}" >&2
+            printf 'Start scli-server on the host or set SCLI_SOCKET to its Unix socket path.\n' >&2
+            exit 1
+        fi
+        run_args+=( -v "${SCLI_SOCKET}:${SCLI_SOCKET}:rw" -e "SCLI_SOCKET=${SCLI_SOCKET}" )
         ;;
 esac
 

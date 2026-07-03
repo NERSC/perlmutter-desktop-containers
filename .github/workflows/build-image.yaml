@@ -69,6 +69,15 @@ jobs:
             tag_prefix: ubuntu-24.04-xfce-
             latest: "false"
 
+          - name: Ubuntu 24.04 XFCE Slurm
+            dockerfile: images/ubuntu-24.04/xfce-slurm/Dockerfile
+            cache_scope: ubuntu-24.04-xfce-slurm
+            platforms: linux/amd64
+            ci_tag: vnc-novnc-container:ubuntu-24.04-xfce-slurm-ci
+            branch_tag_prefix: ubuntu-24.04-xfce-slurm-
+            tag_prefix: ubuntu-24.04-xfce-slurm-
+            latest: "false"
+
           - name: Ubuntu CUDA gpu-xfce
             dockerfile: images/ubuntu/gpu-xfce/Dockerfile
             cache_scope: ubuntu-gpu-xfce
@@ -181,6 +190,12 @@ jobs:
             test "${SHELL}" = "/bin/bash"
             test -s /etc/fonts/fonts.conf
             fc-match sans
+            if command -v scli >/dev/null 2>&1; then
+              test -x /usr/local/bin/scli
+              for command in srun sbatch salloc scontrol sacct squeue scancel sinfo sshare sprio; do
+                test "$(readlink /usr/local/bin/${command})" = "/usr/local/bin/scli"
+              done
+            fi
             test ! -e /opt/vnc-novnc
           '
 

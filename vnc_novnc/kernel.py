@@ -15,6 +15,7 @@ from .runner import (
     DEFAULT_NOVNC_PORT,
     DEFAULT_PASSWORD_LENGTH,
     DEFAULT_VNC_PORT,
+    add_slurm_proxy_args,
     build_defaults,
     add_keep_id_args,
     keep_id_passwd_entry,
@@ -131,6 +132,18 @@ def build_parser(defaults):
     parser.add_argument("--userns-keep-id", action="store_true", default=defaults["userns_keep_id"])
     parser.add_argument("--group-add", action="append", default=list(defaults["group_add"]))
     parser.add_argument("--keep-groups", action="store_true", default=defaults["keep_groups"])
+    parser.add_argument(
+        "--slurm",
+        action="store_true",
+        default=defaults["slurm"],
+        help="Mount an scli-server Unix socket and set SCLI_SOCKET inside the container.",
+    )
+    parser.add_argument("--no-slurm", action="store_false", dest="slurm")
+    parser.add_argument(
+        "--slurm-socket",
+        default=defaults["slurm_socket"],
+        help="Path to the host scli-server Unix socket.",
+    )
     parser.add_argument("--dry-run", action="store_true", default=defaults["dry_run"])
     parser.add_argument("-f", "--connection-file", default="")
     parser.add_argument("kernel_args", nargs=argparse.REMAINDER)
@@ -218,6 +231,9 @@ def build_podman_args(args, password_file, access_url, host_novnc_port, containe
 
     for mount in args.mount:
         run_args.extend(["--mount", mount])
+
+    if args.slurm:
+        add_slurm_proxy_args(run_args, args.slurm_socket, args.dry_run)
 
     extra_args = list(getattr(args, "extra_podman_args", []))
     if extra_args and extra_args[0] == "--":

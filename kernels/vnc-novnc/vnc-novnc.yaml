@@ -5,6 +5,7 @@ image: ghcr.io/dingp/vnc-novnc-container:debian-12-main
 userns: keep-id
 keep_groups: true
 pull_policy: missing
+slurm: false
 
 volume:
   - "${SCRATCH}:${SCRATCH}:rw"

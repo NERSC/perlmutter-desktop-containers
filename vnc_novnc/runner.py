@@ -20,7 +20,7 @@ DEFAULT_JUPYTER_BASE_URL = "https://jupyter.nersc.gov"
 DEFAULT_JUPYTER_HOST = "jupyter.nersc.gov"
 DEFAULT_JUPYTER_HTTPS_PORT = "443"
 LIST_CONFIG_KEYS = ("volume", "mount", "env", "group_add", "extra_podman_args")
-BOOL_CONFIG_KEYS = ("expose_vnc", "userns_keep_id", "keep_groups", "dry_run")
+BOOL_CONFIG_KEYS = ("expose_vnc", "userns_keep_id", "keep_groups", "dry_run", "slurm")
 INT_CONFIG_KEYS = ("password_length",)
 VALID_CONFIG_KEYS = set(
     (
@@ -50,6 +50,8 @@ VALID_CONFIG_KEYS = set(
         "keep_groups",
         "dry_run",
         "extra_podman_args",
+        "slurm",
+        "slurm_socket",
     )
 )
 
@@ -113,6 +115,32 @@ def keep_id_passwd_entry(shell="/bin/bash"):
 def add_keep_id_args(run_args):
     run_args.append("--userns=keep-id")
     run_args.extend(["--passwd-entry", keep_id_passwd_entry()])
+
+
+def default_slurm_socket():
+    if os.environ.get("SCLI_SOCKET"):
+        return os.environ["SCLI_SOCKET"]
+    if os.environ.get("XDG_RUNTIME_DIR"):
+        return os.path.join(os.environ["XDG_RUNTIME_DIR"], "scli.sock")
+    home = os.environ.get("HOME", "")
+    if home:
+        return os.path.join(home, ".local", "run", "scli.sock")
+    return ""
+
+
+def add_slurm_proxy_args(run_args, slurm_socket, dry_run=False):
+    socket_path = os.path.expandvars(os.path.expanduser(slurm_socket or default_slurm_socket()))
+    if not socket_path:
+        raise SystemExit("Unable to resolve Slurm CLI proxy socket path.")
+    if "$" in socket_path:
+        raise SystemExit("Slurm CLI proxy socket contains unresolved variables: {}".format(socket_path))
+    if not dry_run and not os.path.exists(socket_path):
+        raise SystemExit(
+            "Slurm CLI proxy socket does not exist: {}\n"
+            "Start scli-server on the host or pass --slurm-socket PATH.".format(socket_path)
+        )
+    run_args.extend(["-v", "{}:{}:rw".format(socket_path, socket_path)])
+    run_args.extend(["-e", "SCLI_SOCKET={}".format(socket_path)])
 
 
 def strip_yaml_comment(line):
@@ -301,6 +329,8 @@ def build_defaults(config):
         "keep_groups": False,
         "dry_run": False,
         "extra_podman_args": [],
+        "slurm": False,
+        "slurm_socket": "",
     }
     defaults.update(config)
 
@@ -323,6 +353,7 @@ def build_defaults(config):
         "jupyter_proxy_server": os.environ.get("JUPYTER_PROXY_SERVER"),
         "pull_policy": os.environ.get("PODMAN_PULL_POLICY"),
         "userns": os.environ.get("PODMAN_USERNS"),
+        "slurm_socket": os.environ.get("SCLI_SOCKET"),
     }
     for key, value in env_defaults.items():
         if value is not None:
@@ -332,6 +363,8 @@ def build_defaults(config):
         defaults["password_length"] = int(os.environ["VNC_PASSWORD_LENGTH"])
     if "EXPOSE_VNC" in os.environ:
         defaults["expose_vnc"] = env_bool("EXPOSE_VNC", defaults["expose_vnc"])
+    if "VNC_NOVNC_SLURM" in os.environ:
+        defaults["slurm"] = env_bool("VNC_NOVNC_SLURM", defaults["slurm"])
 
     if not defaults["vnc_host_port"]:
         defaults["vnc_host_port"] = defaults["vnc_port"]
@@ -429,6 +462,9 @@ def add_podman_run_args(args, password_file):
 
     for env in args.env:
         run_args.extend(["-e", env])
+
+    if args.slurm:
+        add_slurm_proxy_args(run_args, args.slurm_socket, args.dry_run)
 
     extra_args = args.extra_podman_args
     if extra_args and extra_args[0] == "--":
@@ -547,6 +583,9 @@ def parse_args(argv):
     parser.add_argument("--userns-keep-id", action="store_true", default=defaults["userns_keep_id"])
     parser.add_argument("--group-add", action="append", default=list(defaults["group_add"]))
     parser.add_argument("--keep-groups", action="store_true", default=defaults["keep_groups"])
+    parser.add_argument("--slurm", action="store_true", default=defaults["slurm"], help="Mount an scli-server Unix socket and set SCLI_SOCKET inside the container.")
+    parser.add_argument("--no-slurm", action="store_false", dest="slurm")
+    parser.add_argument("--slurm-socket", default=defaults["slurm_socket"], help="Path to the host scli-server Unix socket. Default: SCLI_SOCKET, XDG_RUNTIME_DIR/scli.sock, or ~/.local/run/scli.sock.")
     parser.add_argument("--dry-run", action="store_true", default=defaults["dry_run"], help="Print the generated command without running podman-hpc.")
     parser.add_argument("extra_podman_args", nargs=argparse.REMAINDER, default=list(defaults["extra_podman_args"]))
 

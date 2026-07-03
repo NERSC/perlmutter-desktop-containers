@@ -41,8 +41,8 @@ DESKTOP=xfce
 ```
 
 Common choices include `debian12 fvwm3`, `debian12 xfce`, `ubuntu24.04 fvwm3`,
-`ubuntu24.04 xfce`, `ubuntu gpu-xfce`, `alma9 fvwm3`, `alma9 xfce`, and
-`opensuse15.6 xfce`.
+`ubuntu24.04 xfce`, `ubuntu24.04 xfce-slurm`, `ubuntu gpu-xfce`,
+`alma9 fvwm3`, `alma9 xfce`, and `opensuse15.6 xfce`.
 
 4. Load the NERSC Python module and install the selected kernelspec. `--prepull`
    downloads the selected image during installation so the first kernel startup
@@ -160,6 +160,7 @@ from `container/` and `vnc_novnc/`.
 | Debian 12 + XFCE | `images/debian-12/xfce/Dockerfile` | `ghcr.io/dingp/vnc-novnc-container:debian-12-xfce-main` |
 | Ubuntu 24.04 + fvwm3 | `images/ubuntu-24.04/fvwm3/Dockerfile` | `ghcr.io/dingp/vnc-novnc-container:ubuntu-24.04-fvwm3-main` |
 | Ubuntu 24.04 + XFCE | `images/ubuntu-24.04/xfce/Dockerfile` | `ghcr.io/dingp/vnc-novnc-container:ubuntu-24.04-xfce-main` |
+| Ubuntu 24.04 + XFCE + Slurm CLI proxy | `images/ubuntu-24.04/xfce-slurm/Dockerfile` | `ghcr.io/dingp/vnc-novnc-container:ubuntu-24.04-xfce-slurm-main` |
 | Ubuntu CUDA + GPU XFCE | `images/ubuntu/gpu-xfce/Dockerfile` | `ghcr.io/dingp/vnc-novnc-container:ubuntu-gpu-xfce-main` |
 | AlmaLinux 9 + fvwm3 | `images/alma-9/fvwm3/Dockerfile` | `ghcr.io/dingp/vnc-novnc-container:alma-9-fvwm3-main` |
 | AlmaLinux 9 + XFCE | `images/alma-9/xfce/Dockerfile` | `ghcr.io/dingp/vnc-novnc-container:alma-9-xfce-main` |
@@ -184,6 +185,7 @@ Build another variant by selecting its Dockerfile:
 podman-hpc build -f images/debian-12/xfce/Dockerfile -t ghcr.io/dingp/vnc-novnc-container:debian-12-xfce-main .
 podman-hpc build -f images/ubuntu-24.04/fvwm3/Dockerfile -t ghcr.io/dingp/vnc-novnc-container:ubuntu-24.04-fvwm3-main .
 podman-hpc build -f images/ubuntu-24.04/xfce/Dockerfile -t ghcr.io/dingp/vnc-novnc-container:ubuntu-24.04-xfce-main .
+podman-hpc build -f images/ubuntu-24.04/xfce-slurm/Dockerfile -t ghcr.io/dingp/vnc-novnc-container:ubuntu-24.04-xfce-slurm-main .
 podman-hpc build -f images/ubuntu/gpu-xfce/Dockerfile -t ghcr.io/dingp/vnc-novnc-container:ubuntu-gpu-xfce-main .
 podman-hpc build -f images/alma-9/fvwm3/Dockerfile -t ghcr.io/dingp/vnc-novnc-container:alma-9-fvwm3-main .
 podman-hpc build -f images/alma-9/xfce/Dockerfile -t ghcr.io/dingp/vnc-novnc-container:alma-9-xfce-main .
@@ -199,6 +201,21 @@ PYTHONPATH="${PWD}" scripts/run-vnc-novnc.py \
   --config scripts/run-vnc-novnc.yaml \
   --image ghcr.io/dingp/vnc-novnc-container:ubuntu-gpu-xfce-main \
   -- --gpu
+```
+
+The `ubuntu24.04 xfce-slurm` image includes the `scli` client and Slurm command
+symlinks (`srun`, `sbatch`, `squeue`, and related commands). Start
+`scli-server` on the Perlmutter host first, then run with `--slurm` so the
+runner mounts the Unix socket and sets `SCLI_SOCKET` inside the container:
+
+```sh
+export SCLI_SOCKET="${XDG_RUNTIME_DIR}/scli.sock"
+scli-server --socket "${SCLI_SOCKET}" --verbose &
+
+PYTHONPATH="${PWD}" scripts/run-vnc-novnc.py \
+  --config scripts/run-vnc-novnc.yaml \
+  --image ghcr.io/dingp/vnc-novnc-container:ubuntu-24.04-xfce-slurm-main \
+  --slurm
 ```
 
 ## Repository Layout
@@ -353,6 +370,7 @@ Use another published variant:
 ```sh
 scripts/run-vnc-novnc.py --image ghcr.io/dingp/vnc-novnc-container:opensuse-15.6-main
 scripts/run-vnc-novnc.py --image ghcr.io/dingp/vnc-novnc-container:ubuntu-24.04-xfce-main
+scripts/run-vnc-novnc.py --image ghcr.io/dingp/vnc-novnc-container:ubuntu-24.04-xfce-slurm-main --slurm
 scripts/run-vnc-novnc.py --image ghcr.io/dingp/vnc-novnc-container:alma-9-xfce-main
 ```
 
@@ -411,6 +429,7 @@ Useful installer options:
 | `--prepull-only` | Pull or refresh selected images without installing kernelspecs. |
 | `--podman-hpc COMMAND` | Choose the `podman-hpc` command used by `--prepull`. |
 | `--source-wrapper` | Make the installed kernel wrapper import `vnc_novnc` directly from this checkout. |
+| `--slurm`, `--no-slurm` | Enable or disable `scli` socket setup in the generated kernelspec. The `ubuntu24.04 xfce-slurm` variant enables it automatically. |
 | `--no-pip-install` | Copy the kernelspec without running `pip install`. |
 | `--prefix DIR` | Install under `DIR/share/jupyter/kernels`. |
 | `--name NAME` | Override the default kernelspec directory name. |
@@ -422,6 +441,7 @@ Examples:
 
 ```sh
 scripts/install-jupyter-kernel.sh ubuntu24.04 xfce --force
+scripts/install-jupyter-kernel.sh ubuntu24.04 xfce-slurm --force
 scripts/install-jupyter-kernel.sh opensuse15.6 xfce --force
 scripts/install-jupyter-kernel.sh --all --force
 scripts/install-jupyter-kernel.sh --all --prepull --force
@@ -458,6 +478,8 @@ The wrapper:
   receives `INT`, `TERM`, or `HUP`.
 - Uses `podman-hpc run --rm --jupyter`.
 - Passes `--userns=keep-id` and `--group-add=keep-groups` from the YAML config.
+- Mounts the `scli-server` Unix socket and sets `SCLI_SOCKET` when `slurm: true`
+  is set in the YAML config.
 - Adds a `--passwd-entry` for the host UID when `keep-id` is active so the
   notebook user resolves to `/bin/bash` inside the container.
 - Mounts `$SCRATCH` and `$CFS` from the YAML config.
