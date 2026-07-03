@@ -51,7 +51,7 @@ Supported variants:
   debian12      xfce   ghcr.io/dingp/vnc-novnc-container:debian-12-xfce-main
   ubuntu24.04   fvwm3  ghcr.io/dingp/vnc-novnc-container:ubuntu-24.04-fvwm3-main
   ubuntu24.04   xfce   ghcr.io/dingp/vnc-novnc-container:ubuntu-24.04-xfce-main
-  ubuntu24.04   xfce-slurm ghcr.io/dingp/vnc-novnc-container:ubuntu-24.04-xfce-slurm-main
+  ubuntu24.04   xfce-slurm registry.nersc.gov/dseg/novnc:ubuntu24.04-xfce-slurm
   ubuntu        gpu-xfce ghcr.io/dingp/vnc-novnc-container:ubuntu-gpu-xfce-main
   alma9         fvwm3  ghcr.io/dingp/vnc-novnc-container:alma-9-fvwm3-main
   alma9         xfce   ghcr.io/dingp/vnc-novnc-container:alma-9-xfce-main
@@ -111,7 +111,7 @@ set_variant_metadata() {
             variant_slug="ubuntu24.04-xfce"
             ;;
         ubuntu24.04:xfce-slurm)
-            image="ghcr.io/dingp/vnc-novnc-container:ubuntu-24.04-xfce-slurm-main"
+            image="registry.nersc.gov/dseg/novnc:ubuntu24.04-xfce-slurm"
             variant_slug="ubuntu24.04-xfce-slurm"
             variant_slurm=1
             ;;
@@ -398,6 +398,19 @@ import sys
 kernel_json, kernel_yaml, display_name, image, slurm_enabled = sys.argv[1:6]
 extra_podman_args = sys.argv[6:]
 pull_policy = "missing"
+slurm_volumes = [
+    "/global:/global",
+    "${SCRATCH}:${SCRATCH}:rw",
+    "${CFS}:${CFS}:rw",
+    "/opt:/opt",
+    "/etc/environment:/etc/environment:ro",
+]
+slurm_env = [
+    "HOME",
+    "MODULEPATH",
+    "MODULEPATH_ROOT",
+    "MODULESHOME",
+]
 with open(kernel_json) as handle:
     data = json.load(handle)
 data["display_name"] = display_name
@@ -443,6 +456,9 @@ set_yaml_scalar(lines, "image", image)
 set_yaml_scalar(lines, "pull_policy", pull_policy)
 set_yaml_scalar(lines, "slurm", "true" if slurm_enabled == "1" else "false")
 set_yaml_list(lines, "extra_podman_args", extra_podman_args)
+if slurm_enabled == "1":
+    set_yaml_list(lines, "volume", slurm_volumes)
+    set_yaml_list(lines, "env", slurm_env)
 
 with open(kernel_yaml, "w") as handle:
     handle.writelines(lines)
@@ -540,8 +556,10 @@ vnc_novnc_start_scli_server() {
             slurm_socket="$SCLI_SOCKET"
         elif [ -n "${XDG_RUNTIME_DIR:-}" ]; then
             slurm_socket="${XDG_RUNTIME_DIR}/scli.sock"
-        else
+        elif [ -n "${HOME:-}" ]; then
             slurm_socket="${HOME}/.local/run/scli.sock"
+        else
+            slurm_socket="/tmp/scli.sock"
         fi
     fi
     SCLI_SOCKET="$slurm_socket"

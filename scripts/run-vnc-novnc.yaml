@@ -7,6 +7,14 @@ pull_policy: missing
 slurm: false
 
 volume:
-  - "${HOME}:${HOME}:rw"
+  - "/global:/global"
   - "${SCRATCH}:${SCRATCH}:rw"
   - "${CFS}:${CFS}:rw"
+  - "/opt:/opt"
+  - "/etc/environment:/etc/environment:ro"
+
+env:
+  - "HOME"
+  - "MODULEPATH"
+  - "MODULEPATH_ROOT"
+  - "MODULESHOME"

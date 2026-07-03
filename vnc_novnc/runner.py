@@ -20,6 +20,7 @@ DEFAULT_VNC_PORT = "5901"
 DEFAULT_JUPYTER_BASE_URL = "https://jupyter.nersc.gov"
 DEFAULT_JUPYTER_HOST = "jupyter.nersc.gov"
 DEFAULT_JUPYTER_HTTPS_PORT = "443"
+NERSC_PROGRAMMING_ENV_VARS = ("HOME", "MODULEPATH", "MODULEPATH_ROOT", "MODULESHOME")
 LIST_CONFIG_KEYS = ("volume", "mount", "env", "group_add", "extra_podman_args")
 BOOL_CONFIG_KEYS = ("expose_vnc", "userns_keep_id", "keep_groups", "dry_run", "slurm")
 INT_CONFIG_KEYS = ("password_length",)
@@ -128,7 +129,7 @@ def default_slurm_socket():
     home = os.environ.get("HOME", "")
     if home:
         return os.path.join(home, ".local", "run", "scli.sock")
-    return ""
+    return "/tmp/scli.sock"
 
 
 def default_slurm_server():
@@ -203,6 +204,63 @@ def add_slurm_proxy_args(run_args, slurm_socket, dry_run=False, slurm_server="",
         start_slurm_proxy_server(socket_path, slurm_server, slurm_server_log)
     run_args.extend(["-v", "{}:{}:rw".format(socket_path, socket_path)])
     run_args.extend(["-e", "SCLI_SOCKET={}".format(socket_path)])
+
+
+def mount_targets_container_path(volumes, mounts, container_path):
+    for volume in volumes:
+        parts = volume.split(":")
+        if len(parts) >= 2 and parts[1] == container_path:
+            return True
+
+    for mount in mounts:
+        for field in mount.split(","):
+            key, _, value = field.partition("=")
+            if key in ("dst", "destination", "target") and value == container_path:
+                return True
+
+    return False
+
+
+def add_host_environment_args(run_args, volumes, mounts):
+    if not os.path.exists("/etc/environment"):
+        return
+    if mount_targets_container_path(volumes, mounts, "/etc/environment"):
+        return
+    run_args.extend(["-v", "/etc/environment:/etc/environment:ro"])
+
+
+def envs_include_name(envs, name):
+    for env in envs:
+        if env.split("=", 1)[0] == name:
+            return True
+    return False
+
+
+def add_env_passthrough_args(run_args, envs, names):
+    for name in names:
+        if not envs_include_name(envs, name):
+            run_args.extend(["-e", name])
+
+
+def add_volume_if_missing(run_args, volumes, mounts, host_path, container_path, mode="rw"):
+    if not host_path or not os.path.exists(host_path):
+        return
+    if mount_targets_container_path(volumes, mounts, container_path):
+        return
+
+    volume = "{}:{}".format(host_path, container_path)
+    if mode:
+        volume = "{}:{}".format(volume, mode)
+    run_args.extend(["-v", volume])
+
+
+def add_nersc_programming_environment_args(run_args, volumes, mounts, envs):
+    add_env_passthrough_args(run_args, envs, NERSC_PROGRAMMING_ENV_VARS)
+    add_volume_if_missing(run_args, volumes, mounts, "/global", "/global", mode="")
+    add_volume_if_missing(run_args, volumes, mounts, os.environ.get("SCRATCH", ""), os.environ.get("SCRATCH", ""))
+    add_volume_if_missing(run_args, volumes, mounts, os.environ.get("CFS", ""), os.environ.get("CFS", ""))
+    add_volume_if_missing(run_args, volumes, mounts, "/opt", "/opt", mode="")
+    add_host_environment_args(run_args, volumes, mounts)
 
 
 def strip_yaml_comment(line):
@@ -530,6 +588,12 @@ def add_podman_run_args(args, password_file):
         run_args.extend(["-e", env])
 
     if args.slurm:
+        add_nersc_programming_environment_args(
+            run_args,
+            args.volume,
+            args.mount,
+            args.env,
+        )
         add_slurm_proxy_args(
             run_args,
             args.slurm_socket,

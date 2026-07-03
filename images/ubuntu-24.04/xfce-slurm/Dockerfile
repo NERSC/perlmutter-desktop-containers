@@ -127,6 +127,29 @@ RUN \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+# Preserve image-level /etc/environment because Slurm runs bind-mount the host file there.
+RUN \
+    set -eu; \
+    mkdir -p /etc/vnc-novnc && \
+    if [ -f /etc/environment ]; then \
+        mv /etc/environment /etc/vnc-novnc/environment; \
+    else \
+        : > /etc/vnc-novnc/environment; \
+    fi && \
+    : > /etc/environment && \
+    printf '%s\n' \
+        'vnc_novnc_source_environment() {' \
+        '    [ -r "$1" ] || return 0' \
+        '    set -a' \
+        '    . "$1"' \
+        '    set +a' \
+        '}' \
+        'vnc_novnc_source_environment /etc/vnc-novnc/environment' \
+        'vnc_novnc_source_environment /etc/environment' \
+        'unset -f vnc_novnc_source_environment' \
+        > /etc/profile.d/00-vnc-novnc-environment.sh && \
+    sed -i '1i[ -r /etc/profile.d/00-vnc-novnc-environment.sh ] && . /etc/profile.d/00-vnc-novnc-environment.sh' /etc/bash.bashrc
+
 COPY container/vnc/vnc-novnc-entrypoint /usr/local/bin/vnc-novnc-entrypoint
 COPY container/kernel/vnc-novnc-jupyter-kernel /usr/local/bin/vnc-novnc-jupyter-kernel
 COPY vnc_novnc /usr/local/lib/vnc-novnc/vnc_novnc
