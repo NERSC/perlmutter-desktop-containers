@@ -17,26 +17,26 @@ The implementation has two commands:
 ```mermaid
 flowchart LR
     subgraph Container
-        shell[Interactive shell]
-        ssh[ssh symlink]
-        client[ssh-proxy client]
+        shell["Interactive shell"]
+        sshlink["ssh symlink"]
+        client["ssh-proxy client"]
     end
 
     subgraph Host
-        socket[Unix socket]
-        server[ssh-proxy-server]
-        realssh[/usr/bin/ssh]
-        auth[Host SSH config and host-based auth]
+        socket["Unix socket"]
+        server["ssh-proxy-server"]
+        realssh["/usr/bin/ssh"]
+        auth["Host SSH config and host-based auth"]
     end
 
-    remote[Remote NERSC host]
+    remote["Remote NERSC host"]
 
-    shell --> ssh --> client
-    client <-->|framed stdin/stdout/stderr/signals/resize| socket
+    shell --> sshlink --> client
+    client <--> socket
     socket <--> server
     server --> realssh
     realssh --> auth
-    realssh <-->|SSH session| remote
+    realssh <--> remote
 ```
 
 ## Socket Discovery
