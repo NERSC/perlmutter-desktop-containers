@@ -144,6 +144,16 @@ def build_parser(defaults):
         default=defaults["slurm_socket"],
         help="Path to the host scli-server Unix socket.",
     )
+    parser.add_argument(
+        "--slurm-server",
+        default=defaults["slurm_server"],
+        help="Path to host scli-server.",
+    )
+    parser.add_argument(
+        "--slurm-server-log",
+        default=defaults["slurm_server_log"],
+        help="Path to the host scli-server startup log.",
+    )
     parser.add_argument("--dry-run", action="store_true", default=defaults["dry_run"])
     parser.add_argument("-f", "--connection-file", default="")
     parser.add_argument("kernel_args", nargs=argparse.REMAINDER)
@@ -233,7 +243,13 @@ def build_podman_args(args, password_file, access_url, host_novnc_port, containe
         run_args.extend(["--mount", mount])
 
     if args.slurm:
-        add_slurm_proxy_args(run_args, args.slurm_socket, args.dry_run)
+        add_slurm_proxy_args(
+            run_args,
+            args.slurm_socket,
+            args.dry_run,
+            args.slurm_server,
+            args.slurm_server_log,
+        )
 
     extra_args = list(getattr(args, "extra_podman_args", []))
     if extra_args and extra_args[0] == "--":

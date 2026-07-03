@@ -9,6 +9,7 @@ import string
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.parse
 
 
@@ -52,6 +53,8 @@ VALID_CONFIG_KEYS = set(
         "extra_podman_args",
         "slurm",
         "slurm_socket",
+        "slurm_server",
+        "slurm_server_log",
     )
 )
 
@@ -128,17 +131,76 @@ def default_slurm_socket():
     return ""
 
 
-def add_slurm_proxy_args(run_args, slurm_socket, dry_run=False):
+def default_slurm_server():
+    home = os.environ.get("HOME", "")
+    if home:
+        return os.path.join(home, "bin", "scli-server")
+    return "scli-server"
+
+
+def default_slurm_server_log():
+    user = os.environ.get("USER") or os.environ.get("LOGNAME") or str(os.getuid())
+    return os.path.join(tempfile.gettempdir(), "vnc-novnc-scli-server-{}.log".format(user))
+
+
+def start_slurm_proxy_server(socket_path, slurm_server, slurm_server_log):
+    if os.path.exists(socket_path):
+        return
+
+    server = os.path.expandvars(os.path.expanduser(slurm_server or default_slurm_server()))
+    log_path = os.path.expandvars(os.path.expanduser(slurm_server_log or default_slurm_server_log()))
+    if not os.path.exists(server):
+        raise SystemExit(
+            "Slurm CLI proxy socket does not exist and scli-server was not found: {}\n"
+            "Install it with scripts/install-jupyter-kernel.sh for a Slurm-enabled kernel "
+            "or pass --slurm-server PATH.".format(server)
+        )
+    if not os.access(server, os.X_OK):
+        raise SystemExit("scli-server is not executable: {}".format(server))
+
+    socket_dir = os.path.dirname(socket_path)
+    if socket_dir:
+        os.makedirs(socket_dir, mode=0o700, exist_ok=True)
+    log_dir = os.path.dirname(log_path)
+    if log_dir:
+        os.makedirs(log_dir, exist_ok=True)
+
+    print("Starting scli-server: {} --socket {}".format(server, socket_path), file=sys.stderr)
+    with open(log_path, "ab") as log_handle:
+        process = subprocess.Popen(
+            [server, "--socket", socket_path],
+            stdout=log_handle,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        if os.path.exists(socket_path):
+            print("scli-server log: {}".format(log_path), file=sys.stderr)
+            return
+        rc = process.poll()
+        if rc is not None:
+            raise SystemExit(
+                "scli-server exited with status {} before creating socket: {}\n"
+                "See log: {}".format(rc, socket_path, log_path)
+            )
+        time.sleep(0.1)
+
+    raise SystemExit(
+        "Timed out waiting for scli-server socket: {}\n"
+        "See log: {}".format(socket_path, log_path)
+    )
+
+
+def add_slurm_proxy_args(run_args, slurm_socket, dry_run=False, slurm_server="", slurm_server_log=""):
     socket_path = os.path.expandvars(os.path.expanduser(slurm_socket or default_slurm_socket()))
     if not socket_path:
         raise SystemExit("Unable to resolve Slurm CLI proxy socket path.")
     if "$" in socket_path:
         raise SystemExit("Slurm CLI proxy socket contains unresolved variables: {}".format(socket_path))
-    if not dry_run and not os.path.exists(socket_path):
-        raise SystemExit(
-            "Slurm CLI proxy socket does not exist: {}\n"
-            "Start scli-server on the host or pass --slurm-socket PATH.".format(socket_path)
-        )
+    if not dry_run:
+        start_slurm_proxy_server(socket_path, slurm_server, slurm_server_log)
     run_args.extend(["-v", "{}:{}:rw".format(socket_path, socket_path)])
     run_args.extend(["-e", "SCLI_SOCKET={}".format(socket_path)])
 
@@ -331,6 +393,8 @@ def build_defaults(config):
         "extra_podman_args": [],
         "slurm": False,
         "slurm_socket": "",
+        "slurm_server": "",
+        "slurm_server_log": "",
     }
     defaults.update(config)
 
@@ -354,6 +418,8 @@ def build_defaults(config):
         "pull_policy": os.environ.get("PODMAN_PULL_POLICY"),
         "userns": os.environ.get("PODMAN_USERNS"),
         "slurm_socket": os.environ.get("SCLI_SOCKET"),
+        "slurm_server": os.environ.get("SCLI_SERVER"),
+        "slurm_server_log": os.environ.get("SCLI_SERVER_LOG"),
     }
     for key, value in env_defaults.items():
         if value is not None:
@@ -464,7 +530,13 @@ def add_podman_run_args(args, password_file):
         run_args.extend(["-e", env])
 
     if args.slurm:
-        add_slurm_proxy_args(run_args, args.slurm_socket, args.dry_run)
+        add_slurm_proxy_args(
+            run_args,
+            args.slurm_socket,
+            args.dry_run,
+            args.slurm_server,
+            args.slurm_server_log,
+        )
 
     extra_args = args.extra_podman_args
     if extra_args and extra_args[0] == "--":
@@ -586,6 +658,8 @@ def parse_args(argv):
     parser.add_argument("--slurm", action="store_true", default=defaults["slurm"], help="Mount an scli-server Unix socket and set SCLI_SOCKET inside the container.")
     parser.add_argument("--no-slurm", action="store_false", dest="slurm")
     parser.add_argument("--slurm-socket", default=defaults["slurm_socket"], help="Path to the host scli-server Unix socket. Default: SCLI_SOCKET, XDG_RUNTIME_DIR/scli.sock, or ~/.local/run/scli.sock.")
+    parser.add_argument("--slurm-server", default=defaults["slurm_server"], help="Path to host scli-server. Default: SCLI_SERVER or ~/bin/scli-server.")
+    parser.add_argument("--slurm-server-log", default=defaults["slurm_server_log"], help="Path to the host scli-server startup log. Default: /tmp/vnc-novnc-scli-server-$USER.log.")
     parser.add_argument("--dry-run", action="store_true", default=defaults["dry_run"], help="Print the generated command without running podman-hpc.")
     parser.add_argument("extra_podman_args", nargs=argparse.REMAINDER, default=list(defaults["extra_podman_args"]))
 

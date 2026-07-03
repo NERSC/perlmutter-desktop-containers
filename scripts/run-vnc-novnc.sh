@@ -18,6 +18,8 @@ EXPOSE_VNC="${EXPOSE_VNC:-0}"
 VNC_PASSWORD_LENGTH="${VNC_PASSWORD_LENGTH:-8}"
 SLURM="${SLURM:-${VNC_NOVNC_SLURM:-0}}"
 SCLI_SOCKET="${SCLI_SOCKET:-}"
+SCLI_SERVER="${SCLI_SERVER:-${HOME}/bin/scli-server}"
+SCLI_SERVER_LOG="${SCLI_SERVER_LOG:-/tmp/vnc-novnc-scli-server-${USER:-$(id -u)}.log}"
 
 while [[ "$#" -gt 0 ]]; do
     case "$1" in
@@ -33,9 +35,18 @@ while [[ "$#" -gt 0 ]]; do
             SCLI_SOCKET="${2:?--slurm-socket requires a value}"
             shift 2
             ;;
+        --slurm-server)
+            SCLI_SERVER="${2:?--slurm-server requires a value}"
+            shift 2
+            ;;
+        --slurm-server-log)
+            SCLI_SERVER_LOG="${2:?--slurm-server-log requires a value}"
+            shift 2
+            ;;
         -h|--help)
             cat <<'EOF'
 Usage: scripts/run-vnc-novnc.sh [--slurm] [--slurm-socket PATH]
+                                [--slurm-server PATH] [--slurm-server-log PATH]
 
 Legacy shell helper for running the default VNC/noVNC image.
 Prefer scripts/run-vnc-novnc.py for full option support.
@@ -148,6 +159,39 @@ default_scli_socket() {
     printf '%s/.local/run/scli.sock\n' "${HOME:-}"
 }
 
+start_scli_server() {
+    if [[ -S "${SCLI_SOCKET}" ]]; then
+        return 0
+    fi
+
+    if [[ ! -x "${SCLI_SERVER}" ]]; then
+        printf 'scli-server is not executable: %s\n' "${SCLI_SERVER}" >&2
+        printf 'Install it with scripts/install-jupyter-kernel.sh for a Slurm-enabled kernel or set SCLI_SERVER.\n' >&2
+        exit 1
+    fi
+
+    mkdir -p "$(dirname "${SCLI_SOCKET}")"
+    chmod 700 "$(dirname "${SCLI_SOCKET}")" 2>/dev/null || true
+    mkdir -p "$(dirname "${SCLI_SERVER_LOG}")"
+
+    printf 'Starting scli-server: %s --socket %s\n' "${SCLI_SERVER}" "${SCLI_SOCKET}" >&2
+    "${SCLI_SERVER}" --socket "${SCLI_SOCKET}" >>"${SCLI_SERVER_LOG}" 2>&1 &
+
+    local i=0
+    while [[ "${i}" -lt 50 ]]; do
+        if [[ -S "${SCLI_SOCKET}" ]]; then
+            printf 'scli-server log: %s\n' "${SCLI_SERVER_LOG}" >&2
+            return 0
+        fi
+        i="$((i + 1))"
+        sleep 0.1
+    done
+
+    printf 'Timed out waiting for scli-server socket: %s\n' "${SCLI_SOCKET}" >&2
+    printf 'See log: %s\n' "${SCLI_SERVER_LOG}" >&2
+    exit 1
+}
+
 if [[ -z "${HOST_NOVNC_PORT}" ]]; then
     HOST_NOVNC_PORT="$(random_port)"
 fi
@@ -183,11 +227,7 @@ esac
 case "${SLURM,,}" in
     1|true|yes|y|on)
         SCLI_SOCKET="$(default_scli_socket)"
-        if [[ ! -S "${SCLI_SOCKET}" ]]; then
-            printf 'Slurm CLI proxy socket does not exist: %s\n' "${SCLI_SOCKET}" >&2
-            printf 'Start scli-server on the host or set SCLI_SOCKET to its Unix socket path.\n' >&2
-            exit 1
-        fi
+        start_scli_server
         run_args+=( -v "${SCLI_SOCKET}:${SCLI_SOCKET}:rw" -e "SCLI_SOCKET=${SCLI_SOCKET}" )
         ;;
 esac

@@ -204,13 +204,16 @@ PYTHONPATH="${PWD}" scripts/run-vnc-novnc.py \
 ```
 
 The `ubuntu24.04 xfce-slurm` image includes the `scli` client and Slurm command
-symlinks (`srun`, `sbatch`, `squeue`, and related commands). Start
-`scli-server` on the Perlmutter host first, then run with `--slurm` so the
-runner mounts the Unix socket and sets `SCLI_SOCKET` inside the container:
+symlinks (`srun`, `sbatch`, `squeue`, and related commands). The Slurm proxy
+code comes from the internal
+[`slurm-cli-proxy`](https://gitlab.nersc.gov/nersc/nersc-user-env/experimental/slurm-cli-proxy)
+project. Installing a Slurm-enabled kernelspec builds the host-side
+`scli-server` into `${HOME}/bin/scli-server`. With `--slurm`, the launcher
+starts `scli-server` if the socket is not already present, then mounts the Unix
+socket and sets `SCLI_SOCKET` inside the container:
 
 ```sh
 export SCLI_SOCKET="${XDG_RUNTIME_DIR}/scli.sock"
-scli-server --socket "${SCLI_SOCKET}" --verbose &
 
 PYTHONPATH="${PWD}" scripts/run-vnc-novnc.py \
   --config scripts/run-vnc-novnc.yaml \

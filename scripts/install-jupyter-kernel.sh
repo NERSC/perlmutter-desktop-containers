@@ -165,6 +165,7 @@ positionals=()
 prepulled_images=()
 extra_podman_args=()
 variant_slurm=0
+scli_server_built=0
 
 while [[ "$#" -gt 0 ]]; do
     case "$1" in
@@ -321,6 +322,32 @@ prepull_image() {
     prepulled_images+=("${pull_image}")
 }
 
+build_scli_server() {
+    local user_key="${USER:-$(id -u)}"
+    local go_cache="${GOCACHE:-${TMPDIR:-/tmp}/vnc-novnc-go-build-cache-${user_key}}"
+    local go_mod_cache="${GOMODCACHE:-${TMPDIR:-/tmp}/vnc-novnc-go-mod-cache-${user_key}}"
+    local output="${HOME}/bin/scli-server"
+
+    if [[ "${scli_server_built}" -eq 1 ]]; then
+        return 0
+    fi
+
+    if ! command -v go >/dev/null 2>&1; then
+        printf 'go is required to build scli-server for Slurm-enabled kernels.\n' >&2
+        printf 'Load or install Go, then rerun this installer.\n' >&2
+        exit 1
+    fi
+
+    mkdir -p "${HOME}/bin"
+    printf 'Building scli-server: %s\n' "${output}"
+    (
+        cd "${repo_dir}/container/slurm-cli-proxy"
+        GOCACHE="${go_cache}" GOMODCACHE="${go_mod_cache}" go build -o "${output}" ./cmd/scli-server
+    )
+    chmod 0755 "${output}"
+    scli_server_built=1
+}
+
 install_one() {
     local install_distro="$1"
     local install_desktop="$2"
@@ -333,6 +360,10 @@ install_one() {
     set_variant_metadata
     if [[ -n "${slurm_override}" ]]; then
         variant_slurm="${slurm_override}"
+    fi
+
+    if [[ "${variant_slurm}" -eq 1 ]]; then
+        build_scli_server
     fi
 
     if [[ "${prepull}" -eq 1 ]]; then
@@ -424,6 +455,136 @@ import sys
 wrapper_path, python_executable, repo_dir, source_wrapper = sys.argv[1:5]
 with open(wrapper_path, "w") as handle:
     handle.write("#!/bin/sh\n")
+    handle.write(r'''
+slurm_config_path=
+slurm_config_enabled=
+slurm_cli_enabled=
+slurm_socket="${SCLI_SOCKET:-}"
+vnc_novnc_dry_run=0
+
+vnc_novnc_read_yaml_scalar() {
+    awk -F: -v key="$1" '
+        $1 == key {
+            sub(/^[^:]*:[[:space:]]*/, "")
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "")
+            gsub(/^"|"$/, "")
+            gsub(/^'\''|'\''$/, "")
+            print
+            exit
+        }
+    ' "$2"
+}
+
+vnc_novnc_detect_slurm() {
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --config)
+                slurm_config_path="${2:-}"
+                shift 2
+                ;;
+            --slurm)
+                slurm_cli_enabled=1
+                shift
+                ;;
+            --no-slurm)
+                slurm_cli_enabled=0
+                shift
+                ;;
+            --slurm-socket)
+                slurm_socket="${2:-}"
+                shift 2
+                ;;
+            --dry-run)
+                vnc_novnc_dry_run=1
+                shift
+                ;;
+            --)
+                break
+                ;;
+            *)
+                shift
+                ;;
+        esac
+    done
+
+    if [ -n "$slurm_config_path" ] && [ -f "$slurm_config_path" ]; then
+        case "$(vnc_novnc_read_yaml_scalar slurm "$slurm_config_path")" in
+            1|true|True|TRUE|yes|Yes|YES|on|On|ON) slurm_config_enabled=1 ;;
+            0|false|False|FALSE|no|No|NO|off|Off|OFF) slurm_config_enabled=0 ;;
+        esac
+        if [ -z "$slurm_socket" ]; then
+            slurm_socket="$(vnc_novnc_read_yaml_scalar slurm_socket "$slurm_config_path")"
+        fi
+    fi
+
+    if [ -n "$slurm_cli_enabled" ]; then
+        VNC_NOVNC_SLURM="$slurm_cli_enabled"
+    elif [ -n "$slurm_config_enabled" ]; then
+        VNC_NOVNC_SLURM="$slurm_config_enabled"
+    else
+        VNC_NOVNC_SLURM="${VNC_NOVNC_SLURM:-0}"
+    fi
+}
+
+vnc_novnc_start_scli_server() {
+    case "$VNC_NOVNC_SLURM" in
+        1|true|True|TRUE|yes|Yes|YES|on|On|ON) ;;
+        *) return 0 ;;
+    esac
+    if [ "$vnc_novnc_dry_run" = "1" ]; then
+        return 0
+    fi
+
+    if [ -z "$slurm_socket" ]; then
+        if [ -n "${SCLI_SOCKET:-}" ]; then
+            slurm_socket="$SCLI_SOCKET"
+        elif [ -n "${XDG_RUNTIME_DIR:-}" ]; then
+            slurm_socket="${XDG_RUNTIME_DIR}/scli.sock"
+        else
+            slurm_socket="${HOME}/.local/run/scli.sock"
+        fi
+    fi
+    SCLI_SOCKET="$slurm_socket"
+    export SCLI_SOCKET VNC_NOVNC_SLURM
+
+    if [ -S "$SCLI_SOCKET" ]; then
+        return 0
+    fi
+
+    scli_server="${SCLI_SERVER:-${HOME}/bin/scli-server}"
+    if [ ! -x "$scli_server" ]; then
+        echo "scli-server is not executable: $scli_server" >&2
+        exit 1
+    fi
+
+    socket_dir="$(dirname "$SCLI_SOCKET")"
+    mkdir -p "$socket_dir"
+    chmod 700 "$socket_dir" 2>/dev/null || true
+
+    log_user="${USER:-$(id -u)}"
+    scli_log="${SCLI_SERVER_LOG:-/tmp/vnc-novnc-scli-server-${log_user}.log}"
+    mkdir -p "$(dirname "$scli_log")"
+    echo "Starting scli-server: $scli_server --socket $SCLI_SOCKET" >&2
+    "$scli_server" --socket "$SCLI_SOCKET" >>"$scli_log" 2>&1 &
+
+    i=0
+    while [ "$i" -lt 50 ]; do
+        if [ -S "$SCLI_SOCKET" ]; then
+            echo "scli-server log: $scli_log" >&2
+            return 0
+        fi
+        i=$((i + 1))
+        sleep 0.1
+    done
+
+    echo "Timed out waiting for scli-server socket: $SCLI_SOCKET" >&2
+    echo "See log: $scli_log" >&2
+    exit 1
+}
+
+vnc_novnc_detect_slurm "$@"
+vnc_novnc_start_scli_server
+''')
     if source_wrapper == "1":
         handle.write(
             "export PYTHONPATH={}:\"${{PYTHONPATH:-}}\"\n".format(
