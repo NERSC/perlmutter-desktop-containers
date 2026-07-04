@@ -117,6 +117,20 @@ RUN \
     zypper --non-interactive clean --all && \
     rm -rf /tmp/sshproxy.tar.gz /var/cache/zypp/*
 
+# Add OpenGL runtime libraries and diagnostics used by Nsight GUI tools in noVNC.
+RUN \
+    set -eu; \
+    zypper --non-interactive refresh && \
+    zypper --non-interactive install --no-recommends \
+        Mesa-demo-x \
+        Mesa-dri \
+        Mesa-gallium \
+        Mesa-libEGL1 \
+        Mesa-libGL1 \
+        libgthread-2_0-0 && \
+    zypper --non-interactive clean --all && \
+    rm -rf /var/cache/zypp/*
+
 # Prefer the host NERSC/Cray Lmod stack when /opt is mounted, and restore the
 # same default programming environment modules used by NERSC login shells.
 RUN \

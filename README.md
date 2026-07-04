@@ -216,7 +216,10 @@ to match Perlmutter host compiler module expectations more closely. The Slurm
 proxy code comes from the internal
 [`slurm-cli-proxy`](https://gitlab.nersc.gov/nersc/nersc-user-env/experimental/slurm-cli-proxy)
 project. Slurm-enabled kernelspecs set `gpu: true`, which adds `--gpu` to
-`podman-hpc run` so host GPUs are visible in the container. Installing a
+`podman-hpc run` so host GPUs are visible in the container. This does not yet
+make the VNC display itself use GPU-accelerated OpenGL rendering; Xvnc uses Mesa
+software rendering today. VirtualGL/EGL integration for hardware-accelerated
+OpenGL inside the VNC display is planned for a future update. Installing a
 Slurm-enabled kernelspec builds the host-side
 `scli-server` into `${HOME}/bin/scli-server` and `ssh-proxy-server` into
 `${HOME}/bin/ssh-proxy-server`. With `--slurm`, the launcher starts
