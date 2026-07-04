@@ -5,6 +5,19 @@ if [[ "${1:-start}" != "start" ]]; then
     exec "$@"
 fi
 
+if [[ -r /etc/profile.d/zz-vnc-novnc-nersc-lmod.sh ]]; then
+    restore_nounset=0
+    case "$-" in
+        *u*) restore_nounset=1 ;;
+    esac
+    set +u
+    . /etc/profile.d/zz-vnc-novnc-nersc-lmod.sh || true
+    if [[ "${restore_nounset}" -eq 1 ]]; then
+        set -u
+    fi
+    unset restore_nounset
+fi
+
 normalize_bool() {
     case "${1,,}" in
         1|true|yes|y|on) printf 'yes' ;;

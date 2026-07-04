@@ -126,6 +126,13 @@ def build_parser(defaults):
         default=defaults["pull_policy"],
         help="Image pull policy passed to podman-hpc run as --pull=POLICY.",
     )
+    parser.add_argument(
+        "--gpu",
+        action="store_true",
+        default=defaults["gpu"],
+        help="Pass --gpu to podman-hpc so host GPUs are available in the container.",
+    )
+    parser.add_argument("--no-gpu", action="store_false", dest="gpu")
     parser.add_argument("-v", "--volume", action="append", default=list(defaults["volume"]))
     parser.add_argument("--mount", action="append", default=list(defaults["mount"]))
     parser.add_argument("-e", "--env", action="append", default=list(defaults["env"]))
@@ -240,6 +247,9 @@ def build_podman_args(args, password_file, access_url, host_novnc_port, containe
     run_policy = run_pull_policy(args.pull_policy)
     if run_policy:
         run_args.append("--pull={}".format(run_policy))
+
+    if args.gpu:
+        run_args.append("--gpu")
 
     if args.userns_keep_id:
         add_keep_id_args(run_args)

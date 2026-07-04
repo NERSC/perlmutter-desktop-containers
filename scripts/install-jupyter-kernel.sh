@@ -98,6 +98,7 @@ canonical_desktop() {
 
 set_variant_metadata() {
     extra_podman_args=()
+    variant_gpu=0
     variant_slurm=0
     variant_ssh_proxy=0
 
@@ -121,13 +122,14 @@ set_variant_metadata() {
         ubuntu24.04:xfce-slurm)
             image="registry.nersc.gov/dseg/novnc:ubuntu24.04-xfce-slurm"
             variant_slug="ubuntu24.04-xfce-slurm"
+            variant_gpu=1
             variant_slurm=1
             variant_ssh_proxy=1
             ;;
         ubuntu:gpu-xfce)
             image="ghcr.io/dingp/vnc-novnc-container:ubuntu-gpu-xfce-main"
             variant_slug="ubuntu-gpu-xfce"
-            extra_podman_args=("--gpu")
+            variant_gpu=1
             ;;
         alma9:fvwm3)
             image="ghcr.io/dingp/vnc-novnc-container:alma-9-fvwm3-main"
@@ -144,6 +146,7 @@ set_variant_metadata() {
         opensuse15.6:xfce-slurm)
             image="registry.nersc.gov/dseg/novnc:opensuse15.6-xfce-slurm"
             variant_slug="opensuse15.6-xfce-slurm"
+            variant_gpu=1
             variant_slurm=1
             variant_ssh_proxy=1
             ;;
@@ -182,6 +185,7 @@ desktop_set=0
 positionals=()
 prepulled_images=()
 extra_podman_args=()
+variant_gpu=0
 variant_slurm=0
 variant_ssh_proxy=0
 scli_server_built=0
@@ -476,18 +480,20 @@ install_one() {
     cp "${kernel_src}/kernel-wrapper" "${tmpdir}/${install_kernel_name}/"
     cp "${kernel_src}/vnc-novnc.yaml" "${tmpdir}/${install_kernel_name}/"
 
-    python3 - "${tmpdir}/${install_kernel_name}/kernel.json" "${tmpdir}/${install_kernel_name}/vnc-novnc.yaml" "${install_display_name}" "${image}" "${variant_slurm}" "${variant_ssh_proxy}" "${display_mode}" "${extra_podman_args[@]}" <<'PY'
+    python3 - "${tmpdir}/${install_kernel_name}/kernel.json" "${tmpdir}/${install_kernel_name}/vnc-novnc.yaml" "${install_display_name}" "${image}" "${variant_gpu}" "${variant_slurm}" "${variant_ssh_proxy}" "${display_mode}" "${extra_podman_args[@]}" <<'PY'
 import json
 import sys
 
-kernel_json, kernel_yaml, display_name, image, slurm_enabled, ssh_proxy_enabled, display_mode = sys.argv[1:8]
-extra_podman_args = sys.argv[8:]
+kernel_json, kernel_yaml, display_name, image, gpu_enabled, slurm_enabled, ssh_proxy_enabled, display_mode = sys.argv[1:9]
+extra_podman_args = sys.argv[9:]
 pull_policy = "missing"
 slurm_volumes = [
     "/global:/global",
     "${SCRATCH}:${SCRATCH}:rw",
     "${CFS}:${CFS}:rw",
     "/opt:/opt",
+    "/etc/cray-pe.d:/etc/cray-pe.d:ro",
+    "/etc/clustername:/etc/clustername:ro",
     "/etc/environment:/etc/environment:ro",
 ]
 slurm_env = [
@@ -543,6 +549,7 @@ with open(kernel_yaml) as handle:
 
 set_yaml_scalar(lines, "image", image)
 set_yaml_scalar(lines, "pull_policy", pull_policy)
+set_yaml_scalar(lines, "gpu", "true" if gpu_enabled == "1" else "false")
 set_yaml_scalar(lines, "slurm", "true" if slurm_enabled == "1" else "false")
 set_yaml_scalar(lines, "ssh_proxy", "true" if ssh_proxy_enabled == "1" else "false")
 set_yaml_scalar(lines, "display_mode", display_mode)

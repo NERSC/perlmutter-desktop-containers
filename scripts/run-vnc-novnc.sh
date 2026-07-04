@@ -18,6 +18,7 @@ VNC_DEPTH="${VNC_DEPTH:-}"
 VNC_HOST_ADDR="${VNC_HOST_ADDR:-127.0.0.1}"
 VNC_HOST_PORT="${VNC_HOST_PORT:-$VNC_PORT}"
 EXPOSE_VNC="${EXPOSE_VNC:-0}"
+GPU="${GPU:-${VNC_NOVNC_GPU:-0}}"
 VNC_PASSWORD_LENGTH="${VNC_PASSWORD_LENGTH:-8}"
 SLURM="${SLURM:-${VNC_NOVNC_SLURM:-0}}"
 SCLI_SOCKET="${SCLI_SOCKET:-}"
@@ -74,6 +75,14 @@ while [[ "$#" -gt 0 ]]; do
             DISPLAY_MODE="${2:?--display-mode requires a value}"
             shift 2
             ;;
+        --gpu)
+            GPU=1
+            shift
+            ;;
+        --no-gpu)
+            GPU=0
+            shift
+            ;;
         --vnc-geometry)
             VNC_GEOMETRY="${2:?--vnc-geometry requires a value}"
             shift 2
@@ -89,6 +98,7 @@ Usage: scripts/run-vnc-novnc.sh [--slurm] [--slurm-socket PATH]
                                 [--ssh-proxy] [--ssh-proxy-socket PATH]
                                 [--ssh-proxy-server PATH] [--ssh-proxy-server-log PATH]
                                 [--display-mode default|1080p|fhd|high]
+                                [--gpu] [--no-gpu]
                                 [--vnc-geometry WIDTHxHEIGHT] [--vnc-depth DEPTH]
 
 Legacy shell helper for running the default VNC/noVNC image.
@@ -201,6 +211,50 @@ PY
     fi
 
     printf '%s\n' "$((49152 + RANDOM % 11848))"
+}
+
+add_volume_if_exists() {
+    local host_path="$1"
+    local container_path="$2"
+    local mode="${3:-}"
+    local volume
+
+    [[ -e "${host_path}" ]] || return 0
+    volume="${host_path}:${container_path}"
+    if [[ -n "${mode}" ]]; then
+        volume="${volume}:${mode}"
+    fi
+    run_args+=( -v "${volume}" )
+}
+
+add_env_if_present() {
+    local name="$1"
+    if [[ -v ${name} ]]; then
+        run_args+=( -e "${name}" )
+    fi
+}
+
+add_nersc_programming_environment_args() {
+    add_env_if_present HOME
+    add_env_if_present MODULEPATH
+    add_env_if_present MODULEPATH_ROOT
+    add_env_if_present MODULESHOME
+    add_env_if_present PE_ENV
+    add_env_if_present LMOD_FAMILY_MPI
+    add_env_if_present LMOD_FAMILY_CUDATOOLKIT
+    add_env_if_present LMOD_FAMILY_CUDATOOLKIT_VERSION
+
+    add_volume_if_exists /global /global
+    if [[ -n "${SCRATCH:-}" ]]; then
+        add_volume_if_exists "${SCRATCH}" "${SCRATCH}" rw
+    fi
+    if [[ -n "${CFS:-}" ]]; then
+        add_volume_if_exists "${CFS}" "${CFS}" rw
+    fi
+    add_volume_if_exists /opt /opt
+    add_volume_if_exists /etc/cray-pe.d /etc/cray-pe.d ro
+    add_volume_if_exists /etc/clustername /etc/clustername ro
+    add_volume_if_exists /etc/environment /etc/environment ro
 }
 
 default_scli_socket() {
@@ -363,8 +417,15 @@ case "${EXPOSE_VNC,,}" in
         ;;
 esac
 
+case "${GPU,,}" in
+    1|true|yes|y|on)
+        run_args+=( --gpu )
+        ;;
+esac
+
 case "${SLURM,,}" in
     1|true|yes|y|on)
+        add_nersc_programming_environment_args
         SCLI_SOCKET="$(default_scli_socket)"
         start_scli_server
         run_args+=( -v "${SCLI_SOCKET}:${SCLI_SOCKET}:rw" -e "SCLI_SOCKET=${SCLI_SOCKET}" )

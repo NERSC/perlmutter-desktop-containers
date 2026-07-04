@@ -117,14 +117,76 @@ RUN \
     zypper --non-interactive clean --all && \
     rm -rf /tmp/sshproxy.tar.gz /var/cache/zypp/*
 
-# Prefer the host NERSC/Cray Lmod stack when /opt is mounted.
+# Prefer the host NERSC/Cray Lmod stack when /opt is mounted, and restore the
+# same default programming environment modules used by NERSC login shells.
 RUN \
     set -eu; \
     printf '%s\n' \
-        'if [ -r /opt/cray/pe/lmod/lmod/init/bash ]; then' \
-        '    unset LMOD_CMD LMOD_DIR LMOD_ROOT LMOD_PKG MODULESHOME LMOD_SETTARG_CMD' \
-        '    . /opt/cray/pe/lmod/lmod/init/bash' \
-        'fi' \
+        '[ -n "${BASH_VERSION:-}" ] || return 0' \
+        '' \
+        'vnc_novnc_nersc_lmod_reset() {' \
+        '    unset LMOD_CMD LMOD_DIR LMOD_ROOT LMOD_PKG LMOD_SETTARG_CMD' \
+        '    unset BASH_ENV' \
+        '    unset MODULESHOME MODULEPATH MODULEPATH_ROOT' \
+        '    unset LOADEDMODULES _LMFILES_ __LMOD_REF_COUNT_MODULEPATH' \
+        '}' \
+        '' \
+        'vnc_novnc_nersc_lmod_init() {' \
+        '    [ "$(id -u)" != "0" ] || return 0' \
+        '    if [ -n "${PELOCAL_PRGENV:-}" ]; then' \
+        '        if [ -r /opt/cray/pe/lmod/lmod/init/profile ]; then' \
+        '            . /opt/cray/pe/lmod/lmod/init/profile >/dev/null 2>&1' \
+        '        elif [ -r /opt/cray/pe/lmod/lmod/init/bash ]; then' \
+        '            . /opt/cray/pe/lmod/lmod/init/bash >/dev/null 2>&1' \
+        '        fi' \
+        '        return 0' \
+        '    fi' \
+        '    vnc_novnc_nersc_lmod_reset' \
+        '    if [ -r /opt/nersc/pe/etc/lmod/lmod_setup.sh ]; then' \
+        '        . /opt/nersc/pe/etc/lmod/lmod_setup.sh' \
+        '    fi' \
+        '    if [ -r /opt/cray/pe/lmod/lmod/init/profile ]; then' \
+        '        . /opt/cray/pe/lmod/lmod/init/profile >/dev/null 2>&1' \
+        '    elif [ -r /opt/cray/pe/lmod/lmod/init/bash ]; then' \
+        '        . /opt/cray/pe/lmod/lmod/init/bash >/dev/null 2>&1' \
+        '    fi' \
+        '}' \
+        '' \
+        'vnc_novnc_nersc_default_modules() {' \
+        '    case "${VNC_NOVNC_NERSC_DEFAULT_MODULES:-1}" in' \
+        '        0|false|FALSE|no|NO|off|OFF) return 0 ;;' \
+        '    esac' \
+        '    [ "$(id -u)" != "0" ] || return 0' \
+        '    if [ -n "${PELOCAL_PRGENV:-}" ]; then' \
+        '        command -v module >/dev/null 2>&1 && module refresh >/dev/null 2>&1 || true' \
+        '        return 0' \
+        '    fi' \
+        '    [ -r /etc/cray-pe.d/cray-pe-configuration.sh ] || return 0' \
+        '    [ -n "${MODULESHOME:-}" ] || return 0' \
+        '    . /etc/cray-pe.d/cray-pe-configuration.sh' \
+        '    mod_paths="/opt/cray/pe/lmod/modulefiles/core /opt/cray/pe/lmod/modulefiles/craype-targets/default ${mpaths:-} /opt/cray/modulefiles"' \
+        '    for p in ${mod_paths}; do' \
+        '        [ -d "${p}" ] || continue' \
+        '        case ":${MODULEPATH:-}:" in' \
+        '            *:"${p}":*) ;;' \
+        '            *) MODULEPATH="${MODULEPATH:+${MODULEPATH}:}${p}" ;;' \
+        '        esac' \
+        '    done' \
+        '    export MODULEPATH' \
+        '    mlist="${init_module_list:-PrgEnv-${default_prgenv:-gnu}} ${site_module_list:-}"' \
+        '    LMOD_SYSTEM_DEFAULT_MODULES="${LMOD_SYSTEM_DEFAULT_MODULES:-$(echo ${mlist} | sed "s_  *_:_g")}"' \
+        '    export LMOD_SYSTEM_DEFAULT_MODULES' \
+        '    if ! module --initial_load --no_redirect load ${mlist} >/dev/null 2>&1; then' \
+        '        printf "WARNING: failed to load NERSC default modules inside container\n" >&2' \
+        '    fi' \
+        '    PELOCAL_PRGENV=true' \
+        '    readonly PELOCAL_PRGENV' \
+        '    export PELOCAL_PRGENV' \
+        '}' \
+        '' \
+        'vnc_novnc_nersc_lmod_init' \
+        'vnc_novnc_nersc_default_modules' \
+        'unset -f vnc_novnc_nersc_lmod_reset vnc_novnc_nersc_lmod_init vnc_novnc_nersc_default_modules' \
         > /etc/profile.d/zz-vnc-novnc-nersc-lmod.sh && \
     printf '%s\n' \
         '[ -r /etc/profile.d/zz-vnc-novnc-nersc-lmod.sh ] && . /etc/profile.d/zz-vnc-novnc-nersc-lmod.sh' \

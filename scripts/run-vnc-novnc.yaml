@@ -5,6 +5,7 @@ userns: keep-id
 keep_groups: true
 pull_policy: missing
 display_mode: default
+gpu: false
 slurm: false
 ssh_proxy: false
 
@@ -13,6 +14,8 @@ volume:
   - "${SCRATCH}:${SCRATCH}:rw"
   - "${CFS}:${CFS}:rw"
   - "/opt:/opt"
+  - "/etc/cray-pe.d:/etc/cray-pe.d:ro"
+  - "/etc/clustername:/etc/clustername:ro"
   - "/etc/environment:/etc/environment:ro"
 
 env:

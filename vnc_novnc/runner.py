@@ -39,7 +39,7 @@ NERSC_PROGRAMMING_ENV_VARS = (
     "LMOD_FAMILY_CUDATOOLKIT_VERSION",
 )
 LIST_CONFIG_KEYS = ("volume", "mount", "env", "group_add", "extra_podman_args")
-BOOL_CONFIG_KEYS = ("expose_vnc", "userns_keep_id", "keep_groups", "dry_run", "slurm", "ssh_proxy")
+BOOL_CONFIG_KEYS = ("expose_vnc", "userns_keep_id", "keep_groups", "dry_run", "gpu", "slurm", "ssh_proxy")
 INT_CONFIG_KEYS = ("password_length",)
 VALID_CONFIG_KEYS = set(
     (
@@ -71,6 +71,7 @@ VALID_CONFIG_KEYS = set(
         "group_add",
         "keep_groups",
         "dry_run",
+        "gpu",
         "extra_podman_args",
         "slurm",
         "slurm_socket",
@@ -495,6 +496,8 @@ def add_nersc_programming_environment_args(run_args, volumes, mounts, envs):
     add_volume_if_missing(run_args, volumes, mounts, os.environ.get("SCRATCH", ""), os.environ.get("SCRATCH", ""))
     add_volume_if_missing(run_args, volumes, mounts, os.environ.get("CFS", ""), os.environ.get("CFS", ""))
     add_volume_if_missing(run_args, volumes, mounts, "/opt", "/opt", mode="")
+    add_volume_if_missing(run_args, volumes, mounts, "/etc/cray-pe.d", "/etc/cray-pe.d", mode="ro")
+    add_volume_if_missing(run_args, volumes, mounts, "/etc/clustername", "/etc/clustername", mode="ro")
     add_host_environment_args(run_args, volumes, mounts)
 
 
@@ -686,6 +689,7 @@ def build_defaults(config):
         "group_add": [],
         "keep_groups": False,
         "dry_run": False,
+        "gpu": False,
         "extra_podman_args": [],
         "slurm": False,
         "slurm_socket": "",
@@ -739,6 +743,8 @@ def build_defaults(config):
         defaults["slurm"] = env_bool("VNC_NOVNC_SLURM", defaults["slurm"])
     if "VNC_NOVNC_SSH_PROXY" in os.environ:
         defaults["ssh_proxy"] = env_bool("VNC_NOVNC_SSH_PROXY", defaults["ssh_proxy"])
+    if "VNC_NOVNC_GPU" in os.environ:
+        defaults["gpu"] = env_bool("VNC_NOVNC_GPU", defaults["gpu"])
 
     if not defaults["vnc_host_port"]:
         defaults["vnc_host_port"] = defaults["vnc_port"]
@@ -825,6 +831,9 @@ def add_podman_run_args(args, password_file):
                 "{}:{}:{}".format(args.vnc_host_addr, args.vnc_host_port, args.vnc_port),
             ]
         )
+
+    if args.gpu:
+        run_args.append("--gpu")
 
     if args.userns_keep_id:
         add_keep_id_args(run_args)
@@ -1001,6 +1010,8 @@ def parse_args(argv):
     parser.add_argument("--userns-keep-id", action="store_true", default=defaults["userns_keep_id"])
     parser.add_argument("--group-add", action="append", default=list(defaults["group_add"]))
     parser.add_argument("--keep-groups", action="store_true", default=defaults["keep_groups"])
+    parser.add_argument("--gpu", action="store_true", default=defaults["gpu"], help="Pass --gpu to podman-hpc so host GPUs are available in the container.")
+    parser.add_argument("--no-gpu", action="store_false", dest="gpu")
     parser.add_argument("--slurm", action="store_true", default=defaults["slurm"], help="Mount an scli-server Unix socket and set SCLI_SOCKET inside the container.")
     parser.add_argument("--no-slurm", action="store_false", dest="slurm")
     parser.add_argument("--slurm-socket", default=defaults["slurm_socket"], help="Path to the host scli-server Unix socket. Default: SCLI_SOCKET, XDG_RUNTIME_DIR/scli-$HOST.sock, or /tmp/vnc-novnc-$UID/scli-$HOST.sock.")
