@@ -388,6 +388,36 @@ When run inside a Jupyter session, helpers use `JUPYTERHUB_SERVICE_PREFIX` to
 build the proxied noVNC URL. This is the preferred path because JupyterHub
 already provides the username and server name.
 
+The runtime flow is:
+
+```mermaid
+flowchart LR
+    browser[Browser noVNC page]
+    hub[JupyterHub jupyter.nersc.gov]
+    proxy[Jupyter Server Proxy path]
+    hostport[Host loopback noVNC port]
+    novnc[Container noVNC port 6080]
+    bridge[websockify bridge]
+    vnc[TigerVNC server port 5901]
+    desktop[VNC desktop and kernel process]
+    wrapper[Runner or Jupyter kernel wrapper]
+    podman[podman-hpc run port publish]
+    password[One-time VNC password file]
+
+    browser --> hub
+    hub --> proxy
+    proxy --> hostport
+    hostport --> novnc
+    novnc --> bridge
+    bridge --> vnc
+    vnc --> desktop
+
+    wrapper --> podman
+    podman --> hostport
+    wrapper --> password
+    password --> novnc
+```
+
 For example, if the service prefix is:
 
 ```text
