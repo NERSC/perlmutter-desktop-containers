@@ -45,12 +45,14 @@ Common choices include `debian12 fvwm3`, `debian12 xfce`, `ubuntu24.04 fvwm3`,
 `alma9 fvwm3`, `alma9 xfce`, `opensuse15.6 xfce`, and
 `opensuse15.6 xfce-slurm`.
 
-4. Load the NERSC Python module and install the selected kernelspec. `--prepull`
-   downloads the selected image during installation so the first kernel startup
-   does not have to wait for an image pull.
+4. Load the NERSC Python module, log in to the NERSC registry if you will pull
+   images from `registry.nersc.gov`, and install the selected kernelspec.
+   `--prepull` downloads the selected image during installation so the first
+   kernel startup does not have to wait for an image pull.
 
 ```sh
 module load python
+podman-hpc login registry.nersc.gov
 scripts/install-jupyter-kernel.sh "${DISTRO}" "${DESKTOP}" --prepull --force
 ```
 
@@ -58,6 +60,7 @@ To install every supported distro/desktop kernelspec and pre-pull every image:
 
 ```sh
 module load python
+podman-hpc login registry.nersc.gov
 scripts/install-jupyter-kernel.sh --all --prepull --force
 ```
 
@@ -89,6 +92,37 @@ vnc_novnc.display_connection()
 
 Open the noVNC URL in the browser and enter the VNC password. Closing the
 notebook stops the noVNC container.
+
+The user workflow is:
+
+```mermaid
+flowchart TD
+    login[Log in to jupyter.nersc.gov]
+    session[Start a Jupyter session]
+    terminal[Open a JupyterLab terminal]
+    clone[One-time setup clone this repo]
+    registry[Log in to registry.nersc.gov]
+    install[Run install-jupyter-kernel.sh with prepull]
+    notebook[Start a notebook with the new VNC kernel]
+    firstcell[Run anything in the first cell]
+    output[Notebook prints noVNC URL and one-time password]
+    openurl[Click the noVNC URL]
+    password[Enter the one-time password]
+    desktop[Use the noVNC desktop]
+
+    login --> session
+    session --> terminal
+    terminal --> clone
+    clone --> registry
+    registry --> install
+    install --> notebook
+    notebook --> firstcell
+    firstcell --> output
+    output --> openurl
+    output --> password
+    openurl --> desktop
+    password --> desktop
+```
 
 ## Quickstart: Manual noVNC Container
 
