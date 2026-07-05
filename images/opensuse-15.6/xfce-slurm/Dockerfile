@@ -285,7 +285,5 @@ ENV \
     SHELL=/bin/bash \
     PYTHONPATH=/usr/local/lib/vnc-novnc
 
-EXPOSE 6080
-
 ENTRYPOINT ["/usr/local/bin/vnc-novnc-entrypoint"]
 CMD ["start"]
