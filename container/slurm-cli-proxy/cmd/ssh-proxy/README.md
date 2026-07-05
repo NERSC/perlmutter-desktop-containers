@@ -15,16 +15,20 @@ The implementation has two commands:
 ## Flow
 
 ```mermaid
-flowchart LR
+flowchart TB
     subgraph Container
+        direction LR
         shell["Interactive shell"]
         sshlink["ssh symlink"]
-        client["ssh-proxy client"]
+        client["ssh-proxy client<br/>raw-mode local TTY"]
     end
 
+    socket[["Unix socket<br/>request frames<br/>stdin/stdout/TTY frames"]]
+
     subgraph Host
-        socket["Unix socket"]
+        direction LR
         server["ssh-proxy-server"]
+        hostpty["Host PTY or pipes<br/>owned by server"]
         realssh["/usr/bin/ssh"]
         auth["Host SSH config and host-based auth"]
     end
@@ -32,9 +36,10 @@ flowchart LR
     remote["Remote NERSC host"]
 
     shell --> sshlink --> client
-    client <--> socket
-    socket <--> server
-    server --> realssh
+    Container <--> socket
+    socket <--> Host
+    server <--> hostpty
+    hostpty <--> realssh
     realssh --> auth
     realssh <--> remote
 ```

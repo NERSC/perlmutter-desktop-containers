@@ -5,6 +5,9 @@ IMAGE="${IMAGE:-ghcr.io/dingp/vnc-novnc-container:debian-12-main}"
 CONTAINER_NOVNC_PORT="${NOVNC_PORT:-6080}"
 HOST_NOVNC_ADDR="${HOST_NOVNC_ADDR:-127.0.0.1}"
 HOST_NOVNC_PORT="${HOST_NOVNC_PORT:-}"
+NOVNC_TRANSPORT="${VNC_NOVNC_TRANSPORT:-${NOVNC_TRANSPORT:-tcp}}"
+NOVNC_UNIX_SOCKET="${NOVNC_UNIX_SOCKET:-}"
+JUPYTER_PROXY_SERVICE="${JUPYTER_PROXY_SERVICE:-vnc-novnc}"
 JUPYTER_PROXY_BASE_URL="${JUPYTER_PROXY_BASE_URL:-https://jupyter.nersc.gov}"
 JUPYTER_PROXY_HOST="${JUPYTER_PROXY_HOST:-jupyter.nersc.gov}"
 JUPYTER_PROXY_HTTPS_PORT="${JUPYTER_PROXY_HTTPS_PORT:-443}"
@@ -75,6 +78,18 @@ while [[ "$#" -gt 0 ]]; do
             DISPLAY_MODE="${2:?--display-mode requires a value}"
             shift 2
             ;;
+        --novnc-transport)
+            NOVNC_TRANSPORT="${2:?--novnc-transport requires a value}"
+            shift 2
+            ;;
+        --novnc-socket)
+            NOVNC_UNIX_SOCKET="${2:?--novnc-socket requires a value}"
+            shift 2
+            ;;
+        --jupyter-proxy-service)
+            JUPYTER_PROXY_SERVICE="${2:?--jupyter-proxy-service requires a value}"
+            shift 2
+            ;;
         --gpu)
             GPU=1
             shift
@@ -98,6 +113,8 @@ Usage: scripts/run-vnc-novnc.sh [--slurm] [--slurm-socket PATH]
                                 [--ssh-proxy] [--ssh-proxy-socket PATH]
                                 [--ssh-proxy-server PATH] [--ssh-proxy-server-log PATH]
                                 [--display-mode default|1080p|fhd|high]
+                                [--novnc-transport tcp|unix] [--novnc-socket PATH]
+                                [--jupyter-proxy-service NAME]
                                 [--gpu] [--no-gpu]
                                 [--vnc-geometry WIDTHxHEIGHT] [--vnc-depth DEPTH]
 
@@ -122,6 +139,23 @@ case "${DISPLAY_MODE,,}" in
         ;;
     *)
         printf 'Unsupported display mode: %s\n' "${DISPLAY_MODE}" >&2
+        exit 2
+        ;;
+esac
+
+case "${NOVNC_TRANSPORT,,}" in
+    tcp|unix)
+        NOVNC_TRANSPORT="${NOVNC_TRANSPORT,,}"
+        ;;
+    *)
+        printf 'Unsupported noVNC transport: %s\n' "${NOVNC_TRANSPORT}" >&2
+        exit 2
+        ;;
+esac
+
+case "${JUPYTER_PROXY_SERVICE}" in
+    ""|*/*)
+        printf 'Jupyter proxy service name must be non-empty and must not contain "/": %s\n' "${JUPYTER_PROXY_SERVICE}" >&2
         exit 2
         ;;
 esac
@@ -166,6 +200,29 @@ jupyter_proxy_url() {
     prefix="${prefix#/}"
     prefix="${prefix%/}"
     proxy_path="${prefix}/proxy/${HOST_NOVNC_PORT}"
+    encoded_path="$(urlencode "${proxy_path}")"
+    base_url="${JUPYTER_PROXY_BASE_URL%/}"
+
+    printf '%s/%s/vnc.html?port=%s&host=%s&path=%s' \
+        "${base_url}" "${proxy_path}" "${JUPYTER_PROXY_HTTPS_PORT}" "${JUPYTER_PROXY_HOST}" "${encoded_path}"
+}
+
+jupyter_proxy_service_url() {
+    local prefix="${JUPYTER_PROXY_PREFIX}"
+    local proxy_path encoded_path base_url service
+
+    if [[ -z "${prefix}" ]]; then
+        if [[ -z "${JUPYTER_PROXY_USER}" || -z "${JUPYTER_PROXY_SERVER}" ]]; then
+            return 1
+        fi
+        prefix="user/${JUPYTER_PROXY_USER}/${JUPYTER_PROXY_SERVER}"
+    fi
+
+    prefix="${prefix#/}"
+    prefix="${prefix%/}"
+    service="${JUPYTER_PROXY_SERVICE#/}"
+    service="${service%/}"
+    proxy_path="${prefix}/${service}"
     encoded_path="$(urlencode "${proxy_path}")"
     base_url="${JUPYTER_PROXY_BASE_URL%/}"
 
@@ -287,6 +344,17 @@ default_ssh_proxy_socket() {
     printf '/tmp/vnc-novnc-%s/ssh-proxy-%s.sock\n' "$(id -u)" "${suffix}"
 }
 
+default_novnc_socket() {
+    if [[ -n "${NOVNC_UNIX_SOCKET}" ]]; then
+        printf '%s\n' "${NOVNC_UNIX_SOCKET}"
+        return
+    fi
+    local host suffix
+    host="$(hostname 2>/dev/null || printf unknown)"
+    suffix="${host//[^A-Za-z0-9_.-]/_}"
+    printf '/tmp/vnc-novnc-%s/novnc-%s.sock\n' "$(id -u)" "${suffix}"
+}
+
 socket_is_live() {
     [[ -S "$1" ]] || return 1
     python3 - "$1" <<'PY' >/dev/null 2>&1
@@ -302,6 +370,17 @@ except OSError:
 finally:
     sock.close()
 PY
+}
+
+prepare_novnc_socket() {
+    if socket_is_live "${NOVNC_UNIX_SOCKET}"; then
+        printf 'noVNC Unix socket is already live: %s\n' "${NOVNC_UNIX_SOCKET}" >&2
+        printf 'Stop the existing noVNC kernel/container or use --novnc-transport tcp.\n' >&2
+        exit 1
+    fi
+    remove_stale_socket "${NOVNC_UNIX_SOCKET}"
+    mkdir -p "$(dirname "${NOVNC_UNIX_SOCKET}")"
+    chmod 700 "$(dirname "${NOVNC_UNIX_SOCKET}")" 2>/dev/null || true
 }
 
 remove_stale_socket() {
@@ -378,7 +457,7 @@ start_ssh_proxy_server() {
     exit 1
 }
 
-if [[ -z "${HOST_NOVNC_PORT}" ]]; then
+if [[ "${NOVNC_TRANSPORT}" == "tcp" && -z "${HOST_NOVNC_PORT}" ]]; then
     HOST_NOVNC_PORT="$(random_port)"
 fi
 
@@ -396,13 +475,21 @@ chmod 0600 "${password_file}"
 run_args=(
     run
     --rm
-    -p "${HOST_NOVNC_ADDR}:${HOST_NOVNC_PORT}:${CONTAINER_NOVNC_PORT}"
     -v "${password_file}:/run/secrets/vnc-password:ro"
     -e "VNC_PASSWORD_PLAIN_FILE=/run/secrets/vnc-password"
     -e "VNC_PASSWORD_FILE=/tmp/vnc-auth/passwd"
     -e "NOVNC_PORT=${CONTAINER_NOVNC_PORT}"
     -e "VNC_PORT=${VNC_PORT}"
 )
+
+if [[ "${NOVNC_TRANSPORT}" == "tcp" ]]; then
+    run_args+=( -p "${HOST_NOVNC_ADDR}:${HOST_NOVNC_PORT}:${CONTAINER_NOVNC_PORT}" )
+else
+    NOVNC_UNIX_SOCKET="$(default_novnc_socket)"
+    prepare_novnc_socket
+    run_args+=( -v "$(dirname "${NOVNC_UNIX_SOCKET}"):$(dirname "${NOVNC_UNIX_SOCKET}"):rw" )
+    run_args+=( -e "NOVNC_UNIX_SOCKET=${NOVNC_UNIX_SOCKET}" )
+fi
 
 if [[ -n "${VNC_GEOMETRY}" ]]; then
     run_args+=( -e "VNC_GEOMETRY=${VNC_GEOMETRY}" )
@@ -441,14 +528,23 @@ case "${SSH_PROXY,,}" in
 esac
 
 printf 'Image: %s\n' "${IMAGE}"
-if access_url="$(jupyter_proxy_url)"; then
+if [[ "${NOVNC_TRANSPORT}" == "unix" ]]; then
+    if access_url="$(jupyter_proxy_service_url)"; then
+        printf 'noVNC: %s\n' "${access_url}"
+    else
+        printf 'noVNC: /%s/vnc.html\n' "${JUPYTER_PROXY_SERVICE}"
+        printf 'Set JUPYTER_PROXY_PREFIX, or set JUPYTER_PROXY_USER and JUPYTER_PROXY_SERVER, to print a full jupyter.nersc.gov named proxy URL.\n'
+    fi
+elif access_url="$(jupyter_proxy_url)"; then
     printf 'noVNC: %s\n' "${access_url}"
 else
     printf 'noVNC: http://%s:%s/vnc.html\n' "${HOST_NOVNC_ADDR}" "${HOST_NOVNC_PORT}"
     printf 'Set JUPYTER_PROXY_PREFIX, or set JUPYTER_PROXY_USER and JUPYTER_PROXY_SERVER, to print a jupyter.nersc.gov proxy URL.\n'
 fi
 printf 'One-time VNC password: %s\n' "${vnc_password}"
-if [[ "${EXPOSE_VNC,,}" =~ ^(1|true|yes|y|on)$ ]]; then
+if [[ "${NOVNC_TRANSPORT}" == "unix" ]]; then
+    printf 'noVNC is exposed through a user-private Unix socket, not a host TCP port.\n'
+elif [[ "${EXPOSE_VNC,,}" =~ ^(1|true|yes|y|on)$ ]]; then
     printf 'VNC: %s:%s\n' "${VNC_HOST_ADDR}" "${VNC_HOST_PORT}"
 else
     printf 'VNC server port is not exposed on the host.\n'

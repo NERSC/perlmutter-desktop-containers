@@ -271,6 +271,68 @@ SSH_PROXY_SOCKET, then ${XDG_RUNTIME_DIR}/ssh-proxy-$(hostname).sock,
 then /tmp/vnc-novnc-$(id -u)/ssh-proxy-$(hostname).sock
 ```
 
+The Slurm proxy carries command requests and interactive I/O over the mounted
+Unix socket. The container client does not directly attach to a host TTY; when
+TTY mode is requested, the host-side server owns the host PTY or pipe endpoints
+and sends stdin/stdout/stderr frames through the socket.
+
+```mermaid
+flowchart TB
+    subgraph Container
+        direction LR
+        shell["Container shell or tool"]
+        scli["scli client / Slurm symlink"]
+        shell --> scli
+    end
+
+    socket[["Mounted Unix socket<br/>request frames<br/>stdin/stdout/TTY frames"]]
+
+    subgraph Host
+        direction LR
+        server["scli-server"]
+        hostio["Host pipes or PTY<br/>owned by server"]
+        slurm["Native Slurm CLI<br/>srun, squeue, sbatch"]
+        daemon["Slurm controller<br/>and daemons"]
+        server <--> hostio
+        hostio <--> slurm
+        slurm --> daemon
+    end
+
+    Container <--> socket
+    socket <--> Host
+```
+
+The SSH proxy uses the same framing model. The container-side `ssh` shim puts
+the local container terminal into raw mode when needed, but the real host SSH
+process talks to a host-side PTY or pipes managed by `ssh-proxy-server`.
+
+```mermaid
+flowchart TB
+    subgraph Container
+        direction LR
+        term["Container terminal"]
+        sshshim["ssh / ssh-proxy client<br/>raw-mode local TTY"]
+        term --> sshshim
+    end
+
+    socket[["Mounted Unix socket<br/>request frames<br/>stdin/stdout/TTY frames"]]
+
+    subgraph Host
+        direction LR
+        server["ssh-proxy-server"]
+        hostpty["Host PTY or pipes<br/>owned by server"]
+        realssh["/usr/bin/ssh"]
+        auth["Host SSH config<br/>and host-based auth"]
+        target["Remote NERSC host"]
+        server <--> hostpty
+        hostpty <--> realssh
+        realssh --> auth --> target
+    end
+
+    Container <--> socket
+    socket <--> Host
+```
+
 ```sh
 PYTHONPATH="${PWD}" scripts/run-vnc-novnc.py \
   --config scripts/run-vnc-novnc.yaml \
@@ -372,6 +434,9 @@ Common settings:
 | `HOST_NOVNC_ADDR` | `127.0.0.1` | Host address for noVNC port publication. |
 | `HOST_NOVNC_PORT` | random | Host port for noVNC. |
 | `NOVNC_PORT` | `6080` | noVNC port inside the container. |
+| `VNC_NOVNC_TRANSPORT` | `tcp` for the standalone runner, `unix` for installed kernels | noVNC exposure mode. `unix` uses a user-private socket and named Jupyter Server Proxy service. |
+| `NOVNC_UNIX_SOCKET` | `/tmp/vnc-novnc-$(id -u)/novnc-$(hostname).sock` | noVNC Unix socket path when Unix transport is enabled. |
+| `JUPYTER_PROXY_SERVICE` | `vnc-novnc` | Named Jupyter Server Proxy service used by Unix transport. |
 | `VNC_PORT` | `5901` | VNC server port inside the container. |
 | `VNC_NOVNC_DISPLAY_MODE` | `default` | Display preset. Use `1080p`, `fhd`, or `high` for `1920x1080` with `VNC_DEPTH=32`. |
 | `VNC_GEOMETRY` | image default | Explicit VNC desktop size, for example `1920x1080`. |
@@ -386,6 +451,9 @@ Common Python helper options:
 | `--config FILE` | Read default values from a YAML config file. |
 | `--image IMAGE` | Select a container image. |
 | `--pull-policy POLICY` | Image preparation policy: `missing`, `newer`, `always`, or `never`. Default: `missing`. |
+| `--novnc-transport tcp\|unix` | Expose noVNC through a host TCP port or a user-private Unix socket. |
+| `--novnc-socket PATH` | Override the noVNC Unix socket path. |
+| `--jupyter-proxy-service NAME` | Named Jupyter Server Proxy service for Unix socket mode. |
 | `-v`, `--volume HOST:CONTAINER[:OPTIONS]` | Add a bind mount or volume spec. May be repeated. |
 | `--mount SPEC` | Add a Podman `--mount` spec. May be repeated. |
 | `-e`, `--env NAME[=VALUE]` | Pass an environment variable into the container. May be repeated. |
@@ -419,8 +487,10 @@ tries to pull and use a missing image in one step.
 ## Jupyter Server Proxy URLs
 
 When run inside a Jupyter session, helpers use `JUPYTERHUB_SERVICE_PREFIX` to
-build the proxied noVNC URL. This is the preferred path because JupyterHub
-already provides the username and server name.
+build the proxied noVNC URL. Installed kernels use a named Jupyter Server Proxy
+service backed by a Unix socket, so no host TCP noVNC port is exposed to other
+users on the same node. The standalone runner keeps TCP mode as its default for
+manual use, but can opt into Unix mode with `--novnc-transport unix`.
 
 The runtime flow is:
 
@@ -428,26 +498,26 @@ The runtime flow is:
 flowchart LR
     browser[Browser noVNC page]
     hub[JupyterHub jupyter.nersc.gov]
-    proxy[Jupyter Server Proxy path]
-    hostport[Host loopback noVNC port]
-    novnc[Container noVNC port 6080]
+    proxy[Jupyter Server Proxy named service]
+    socket[User-private Unix socket<br/>/tmp/vnc-novnc-UID/novnc-HOST.sock]
+    novnc[Container noVNC websockify]
     bridge[websockify bridge]
     vnc[TigerVNC server port 5901]
     desktop[VNC desktop and kernel process]
     wrapper[Runner or Jupyter kernel wrapper]
-    podman[podman-hpc run port publish]
+    podman[podman-hpc run socket-dir mount]
     password[One-time VNC password file]
 
     browser --> hub
     hub --> proxy
-    proxy --> hostport
-    hostport --> novnc
+    proxy --> socket
+    socket --> novnc
     novnc --> bridge
     bridge --> vnc
     vnc --> desktop
 
     wrapper --> podman
-    podman --> hostport
+    podman --> socket
     wrapper --> password
     password --> novnc
 ```
@@ -458,10 +528,10 @@ For example, if the service prefix is:
 /user/your-user-name/muller-login-node-base/
 ```
 
-and the selected noVNC host port is `49967`, the printed URL is:
+and the named proxy service is `vnc-novnc`, the printed URL is:
 
 ```text
-https://jupyter.nersc.gov/user/your-user-name/muller-login-node-base/proxy/49967/vnc.html?port=443&host=jupyter.nersc.gov&path=user%2Fyour-user-name%2Fmuller-login-node-base%2Fproxy%2F49967
+https://jupyter.nersc.gov/user/your-user-name/muller-login-node-base/vnc-novnc/vnc.html?port=443&host=jupyter.nersc.gov&path=user%2Fyour-user-name%2Fmuller-login-node-base%2Fvnc-novnc
 ```
 
 If the helper is not running inside Jupyter, provide the server path explicitly:
@@ -476,6 +546,12 @@ Use a fixed noVNC host port:
 
 ```sh
 scripts/run-vnc-novnc.py --host-novnc-port 49967
+```
+
+Use the secure Unix-socket noVNC transport:
+
+```sh
+scripts/run-vnc-novnc.py --novnc-transport unix
 ```
 
 Use another published variant:
@@ -542,6 +618,9 @@ Useful installer options:
 | `--prepull-only` | Pull or refresh selected images without installing kernelspecs. |
 | `--podman-hpc COMMAND` | Choose the `podman-hpc` command used by `--prepull`. |
 | `--source-wrapper` | Make the installed kernel wrapper import `vnc_novnc` directly from this checkout. |
+| `--novnc-transport unix\|tcp` | Choose noVNC exposure mode for the installed kernel. Default: `unix`. Use `tcp` as a fallback if Jupyter Server Proxy Unix sockets are unavailable. |
+| `--novnc-socket PATH` | Override the noVNC Unix socket path in the generated kernel config and Jupyter proxy config. |
+| `--jupyter-proxy-service NAME` | Named Jupyter Server Proxy service used by Unix socket mode. Default: `vnc-novnc`. |
 | `--display-mode MODE` | Set the kernelspec display preset. Use `1080p`, `fhd`, or `high` for `1920x1080` with `VNC_DEPTH=32`; non-default modes get a suffix in the default kernelspec name. |
 | `--slurm`, `--no-slurm` | Enable or disable `scli` socket setup in the generated kernelspec. The `ubuntu24.04 xfce-slurm` variant enables it automatically. |
 | `--ssh-proxy`, `--no-ssh-proxy` | Enable or disable host SSH proxy socket setup in the generated kernelspec. Slurm image variants enable it automatically. |
@@ -571,7 +650,9 @@ For development from a checkout:
 scripts/install-jupyter-kernel.sh --source-wrapper --force
 ```
 
-Restart or refresh JupyterLab if the new kernel does not appear immediately.
+Restart the Jupyter session after the first Unix-mode install so the
+`vnc-novnc` Jupyter Server Proxy service is loaded. Restart or refresh
+JupyterLab if the new kernel does not appear immediately.
 
 ## Kernel Behavior
 
@@ -584,12 +665,14 @@ interpreter that installed the kernelspec:
 
 The wrapper:
 
-- Chooses an available host port for noVNC unless `host_novnc_port` is set.
+- Uses a user-private noVNC Unix socket when `novnc_transport: unix` is set, or
+  chooses an available host port when `novnc_transport: tcp`.
 - Generates a one-time VNC password.
 - Writes the password to a temporary `0600` file on the host.
 - Mounts that file read-only at `/run/secrets/vnc-password` inside the
   container.
-- Publishes noVNC on the selected host port.
+- Mounts the noVNC socket directory into the container for Unix mode; publishes
+  noVNC on the selected host port for TCP mode.
 - Names the container and explicitly stops/removes it if the host wrapper
   receives `INT`, `TERM`, or `HUP`.
 - Mounts `/tmp` directly for Jupyter runtime files.
@@ -631,6 +714,9 @@ userns: keep-id
 keep_groups: true
 pull_policy: missing
 display_mode: default
+novnc_transport: unix
+novnc_socket:
+jupyter_proxy_service: vnc-novnc
 gpu: false
 
 volume:

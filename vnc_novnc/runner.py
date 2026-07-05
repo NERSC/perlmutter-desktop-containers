@@ -19,6 +19,8 @@ DEFAULT_IMAGE = "ghcr.io/dingp/vnc-novnc-container:debian-12-main"
 DEFAULT_PASSWORD_LENGTH = 8
 DEFAULT_NOVNC_PORT = "6080"
 DEFAULT_VNC_PORT = "5901"
+DEFAULT_NOVNC_TRANSPORT = "tcp"
+DEFAULT_JUPYTER_PROXY_SERVICE = "vnc-novnc"
 DEFAULT_JUPYTER_BASE_URL = "https://jupyter.nersc.gov"
 DEFAULT_JUPYTER_HOST = "jupyter.nersc.gov"
 DEFAULT_JUPYTER_HTTPS_PORT = "443"
@@ -48,6 +50,8 @@ VALID_CONFIG_KEYS = set(
         "host_novnc_addr",
         "host_novnc_port",
         "novnc_port",
+        "novnc_transport",
+        "novnc_socket",
         "vnc_port",
         "display_mode",
         "vnc_geometry",
@@ -62,6 +66,7 @@ VALID_CONFIG_KEYS = set(
         "jupyter_proxy_prefix",
         "jupyter_proxy_user",
         "jupyter_proxy_server",
+        "jupyter_proxy_service",
         "pull_policy",
         "volume",
         "mount",
@@ -158,6 +163,13 @@ def default_runtime_socket(name):
     return os.path.join(tempfile.gettempdir(), "vnc-novnc-{}".format(os.getuid()), filename)
 
 
+def default_novnc_socket():
+    if os.environ.get("NOVNC_UNIX_SOCKET"):
+        return os.environ["NOVNC_UNIX_SOCKET"]
+    filename = "novnc-{}.sock".format(socket_hostname())
+    return os.path.join(tempfile.gettempdir(), "vnc-novnc-{}".format(os.getuid()), filename)
+
+
 def default_slurm_socket():
     if os.environ.get("SCLI_SOCKET"):
         return os.environ["SCLI_SOCKET"]
@@ -217,6 +229,34 @@ def remove_stale_socket(path):
     if path_is_socket(path) and not socket_accepts_connection(path):
         try:
             os.unlink(path)
+        except OSError:
+            pass
+
+
+def resolve_socket_path(path, default, label):
+    socket_path = os.path.expandvars(os.path.expanduser(path or default()))
+    if not socket_path:
+        raise SystemExit("Unable to resolve {} socket path.".format(label))
+    if "$" in socket_path:
+        raise SystemExit("{} socket contains unresolved variables: {}".format(label, socket_path))
+    return socket_path
+
+
+def prepare_novnc_socket(socket_path, dry_run=False):
+    if dry_run:
+        return
+    if socket_accepts_connection(socket_path):
+        raise SystemExit(
+            "noVNC Unix socket is already live: {}\n"
+            "Only one active Unix-socket noVNC kernel is supported for this "
+            "Jupyter server. Stop the existing kernel or choose TCP mode.".format(socket_path)
+        )
+    remove_stale_socket(socket_path)
+    socket_dir = os.path.dirname(socket_path)
+    if socket_dir:
+        os.makedirs(socket_dir, mode=0o700, exist_ok=True)
+        try:
+            os.chmod(socket_dir, 0o700)
         except OSError:
             pass
 
@@ -370,6 +410,28 @@ def path_visible_through_same_path_mount(path, volumes=None, mounts=None, implic
         if mount_same_path_covers(mount, path):
             return True
     return False
+
+
+def add_novnc_unix_socket_args(
+    run_args,
+    novnc_socket,
+    dry_run=False,
+    volumes=None,
+    mounts=None,
+    implicit_same_path_mounts=None,
+):
+    socket_path = resolve_socket_path(novnc_socket, default_novnc_socket, "noVNC Unix")
+    prepare_novnc_socket(socket_path, dry_run=dry_run)
+    socket_dir = os.path.dirname(socket_path) or "."
+    if not path_visible_through_same_path_mount(
+        socket_path,
+        volumes=volumes,
+        mounts=mounts,
+        implicit_same_path_mounts=implicit_same_path_mounts,
+    ):
+        run_args.extend(["-v", "{}:{}:rw".format(socket_dir, socket_dir)])
+    run_args.extend(["-e", "NOVNC_UNIX_SOCKET={}".format(socket_path)])
+    return socket_path
 
 
 def add_slurm_proxy_args(
@@ -666,6 +728,8 @@ def build_defaults(config):
         "host_novnc_addr": "127.0.0.1",
         "host_novnc_port": "",
         "novnc_port": DEFAULT_NOVNC_PORT,
+        "novnc_transport": DEFAULT_NOVNC_TRANSPORT,
+        "novnc_socket": "",
         "vnc_port": DEFAULT_VNC_PORT,
         "display_mode": "default",
         "vnc_geometry": "",
@@ -680,6 +744,7 @@ def build_defaults(config):
         "jupyter_proxy_prefix": "",
         "jupyter_proxy_user": os.environ.get("USER", ""),
         "jupyter_proxy_server": "",
+        "jupyter_proxy_service": DEFAULT_JUPYTER_PROXY_SERVICE,
         "pull_policy": "missing",
         "volume": [],
         "mount": [],
@@ -708,6 +773,8 @@ def build_defaults(config):
         "host_novnc_addr": os.environ.get("HOST_NOVNC_ADDR"),
         "host_novnc_port": os.environ.get("HOST_NOVNC_PORT"),
         "novnc_port": os.environ.get("NOVNC_PORT"),
+        "novnc_transport": os.environ.get("VNC_NOVNC_TRANSPORT"),
+        "novnc_socket": os.environ.get("NOVNC_UNIX_SOCKET"),
         "vnc_port": os.environ.get("VNC_PORT"),
         "display_mode": os.environ.get("VNC_NOVNC_DISPLAY_MODE"),
         "vnc_geometry": os.environ.get("VNC_GEOMETRY"),
@@ -722,6 +789,7 @@ def build_defaults(config):
         ),
         "jupyter_proxy_user": os.environ.get("JUPYTER_PROXY_USER"),
         "jupyter_proxy_server": os.environ.get("JUPYTER_PROXY_SERVER"),
+        "jupyter_proxy_service": os.environ.get("JUPYTER_PROXY_SERVICE"),
         "pull_policy": os.environ.get("PODMAN_PULL_POLICY"),
         "userns": os.environ.get("PODMAN_USERNS"),
         "slurm_socket": os.environ.get("SCLI_SOCKET"),
@@ -758,6 +826,9 @@ def build_defaults(config):
         raise ValueError(
             "display_mode must be one of: {}".format(", ".join(sorted(DISPLAY_MODES)))
         )
+    defaults["novnc_transport"] = defaults["novnc_transport"].lower()
+    if defaults["novnc_transport"] not in ("tcp", "unix"):
+        raise ValueError("novnc_transport must be one of: tcp, unix")
 
     return defaults
 
@@ -793,15 +864,33 @@ def jupyter_proxy_url(args, host_novnc_port):
     )
 
 
-def add_podman_run_args(args, password_file):
-    host_novnc_port = args.host_novnc_port or random_port()
+def jupyter_proxy_service_url(args, service_name):
+    prefix = args.jupyter_proxy_prefix
 
+    if not prefix:
+        if not args.jupyter_proxy_user or not args.jupyter_proxy_server:
+            return None
+        prefix = "user/{}/{}".format(args.jupyter_proxy_user, args.jupyter_proxy_server)
+
+    prefix = prefix.strip("/")
+    service_path = "{}/{}".format(prefix, service_name.strip("/"))
+    encoded_path = urllib.parse.quote(service_path, safe="")
+    base_url = args.jupyter_proxy_base_url.rstrip("/")
+
+    return "{}{}/vnc.html?port={}&host={}&path={}".format(
+        base_url + "/",
+        service_path,
+        args.jupyter_proxy_https_port,
+        args.jupyter_proxy_host,
+        encoded_path,
+    )
+
+
+def add_podman_run_args(args, password_file):
     run_args = [
         args.podman_hpc,
         "run",
         "--rm",
-        "-p",
-        "{}:{}:{}".format(args.host_novnc_addr, host_novnc_port, args.novnc_port),
         "-v",
         "{}:/run/secrets/vnc-password:ro".format(password_file),
         "-e",
@@ -813,6 +902,23 @@ def add_podman_run_args(args, password_file):
         "-e",
         "VNC_PORT={}".format(args.vnc_port),
     ]
+    host_novnc_port = ""
+    if args.novnc_transport == "tcp":
+        host_novnc_port = args.host_novnc_port or random_port()
+        run_args.extend(
+            [
+                "-p",
+                "{}:{}:{}".format(args.host_novnc_addr, host_novnc_port, args.novnc_port),
+            ]
+        )
+    else:
+        add_novnc_unix_socket_args(
+            run_args,
+            args.novnc_socket,
+            dry_run=args.dry_run,
+            volumes=args.volume,
+            mounts=args.mount,
+        )
     add_display_mode_args(
         run_args,
         args.display_mode,
@@ -895,11 +1001,20 @@ def add_podman_run_args(args, password_file):
 
 
 def print_access_details(args, host_novnc_port, vnc_password):
-    access_url = jupyter_proxy_url(args, host_novnc_port)
+    if args.novnc_transport == "unix":
+        access_url = jupyter_proxy_service_url(args, args.jupyter_proxy_service)
+    else:
+        access_url = jupyter_proxy_url(args, host_novnc_port)
 
     print("Image: {}".format(args.image))
     if access_url:
         print("noVNC: {}".format(access_url))
+    elif args.novnc_transport == "unix":
+        print("noVNC: /{}/vnc.html".format(args.jupyter_proxy_service.strip("/")))
+        print(
+            "Set JUPYTER_PROXY_PREFIX, or set JUPYTER_PROXY_USER and "
+            "JUPYTER_PROXY_SERVER, to print a full jupyter.nersc.gov named proxy URL."
+        )
     else:
         print(
             "noVNC: http://{}:{}/vnc.html".format(
@@ -912,7 +1027,9 @@ def print_access_details(args, host_novnc_port, vnc_password):
         )
 
     print("One-time VNC password: {}".format(vnc_password))
-    if args.expose_vnc:
+    if args.novnc_transport == "unix":
+        print("noVNC is exposed through a user-private Unix socket, not a host TCP port.")
+    elif args.expose_vnc:
         print("VNC: {}:{}".format(args.vnc_host_addr, args.vnc_host_port))
     else:
         print("VNC server port is not exposed on the host.")
@@ -944,6 +1061,17 @@ def parse_args(argv):
     parser.add_argument("--host-novnc-addr", default=defaults["host_novnc_addr"])
     parser.add_argument("--host-novnc-port", default=defaults["host_novnc_port"])
     parser.add_argument("--novnc-port", default=defaults["novnc_port"])
+    parser.add_argument(
+        "--novnc-transport",
+        choices=("tcp", "unix"),
+        default=defaults["novnc_transport"],
+        help="How to expose noVNC to Jupyter: tcp publishes a loopback port; unix uses a user-private Unix socket.",
+    )
+    parser.add_argument(
+        "--novnc-socket",
+        default=defaults["novnc_socket"],
+        help="Host/container path for the noVNC Unix socket. Default: NOVNC_UNIX_SOCKET or /tmp/vnc-novnc-$UID/novnc-$HOST.sock.",
+    )
     parser.add_argument("--vnc-port", default=defaults["vnc_port"])
     parser.add_argument(
         "--display-mode",
@@ -979,6 +1107,11 @@ def parse_args(argv):
     )
     parser.add_argument("--jupyter-proxy-user", default=defaults["jupyter_proxy_user"])
     parser.add_argument("--jupyter-proxy-server", default=defaults["jupyter_proxy_server"])
+    parser.add_argument(
+        "--jupyter-proxy-service",
+        default=defaults["jupyter_proxy_service"],
+        help="Named Jupyter Server Proxy service used by noVNC Unix socket mode.",
+    )
     parser.add_argument(
         "--pull-policy",
         choices=("always", "missing", "never", "newer"),
@@ -1030,6 +1163,8 @@ def parse_args(argv):
         args.extra_podman_args = list(defaults["extra_podman_args"])
     if args.password_length < 1:
         parser.error("--password-length must be positive")
+    if not args.jupyter_proxy_service or "/" in args.jupyter_proxy_service:
+        parser.error("--jupyter-proxy-service must be non-empty and must not contain '/'")
     return args
 
 

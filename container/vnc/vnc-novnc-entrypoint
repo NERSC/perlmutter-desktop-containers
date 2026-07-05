@@ -198,15 +198,28 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-novnc_args=(
-    --web="${NOVNC_WEB}"
-    "${NOVNC_LISTEN}:${NOVNC_PORT}"
-    "${NOVNC_VNC_HOST}:${novnc_vnc_port}"
-)
+novnc_args=( --web="${NOVNC_WEB}" )
+if [[ -n "${NOVNC_UNIX_SOCKET:-}" ]]; then
+    mkdir -p "$(dirname "${NOVNC_UNIX_SOCKET}")"
+    chmod 700 "$(dirname "${NOVNC_UNIX_SOCKET}")" >/dev/null 2>&1 || true
+    rm -f "${NOVNC_UNIX_SOCKET}"
+    novnc_args+=(
+        --unix-listen "${NOVNC_UNIX_SOCKET}"
+        --unix-listen-mode 0600
+    )
+else
+    novnc_args+=( "${NOVNC_LISTEN}:${NOVNC_PORT}" )
+fi
+novnc_args+=( "${NOVNC_VNC_HOST}:${novnc_vnc_port}" )
 append_words "${NOVNC_EXTRA_ARGS}" novnc_args
 
-printf 'Starting noVNC on http://%s:%s/vnc.html -> %s:%s\n' \
-    "${NOVNC_LISTEN}" "${NOVNC_PORT}" "${NOVNC_VNC_HOST}" "${novnc_vnc_port}"
+if [[ -n "${NOVNC_UNIX_SOCKET:-}" ]]; then
+    printf 'Starting noVNC on Unix socket %s -> %s:%s\n' \
+        "${NOVNC_UNIX_SOCKET}" "${NOVNC_VNC_HOST}" "${novnc_vnc_port}"
+else
+    printf 'Starting noVNC on http://%s:%s/vnc.html -> %s:%s\n' \
+        "${NOVNC_LISTEN}" "${NOVNC_PORT}" "${NOVNC_VNC_HOST}" "${novnc_vnc_port}"
+fi
 websockify "${novnc_args[@]}" &
 websockify_pid="$!"
 wait "${websockify_pid}"

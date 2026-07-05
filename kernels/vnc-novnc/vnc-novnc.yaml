@@ -6,6 +6,9 @@ userns: keep-id
 keep_groups: true
 pull_policy: missing
 display_mode: default
+novnc_transport: unix
+novnc_socket:
+jupyter_proxy_service: vnc-novnc
 gpu: false
 slurm: false
 ssh_proxy: false

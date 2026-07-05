@@ -33,6 +33,13 @@ Options:
                           Default: ${HOME}/.local
   --no-pip-install        Do not run "python3 -m pip install --user -e .".
   --source-wrapper        Install a wrapper that imports vnc_novnc from this checkout.
+  --novnc-transport MODE  noVNC exposure mode for installed kernels: unix or tcp.
+                          Default: unix.
+  --novnc-socket PATH     noVNC Unix socket path. Default is computed at runtime:
+                          /tmp/vnc-novnc-UID/novnc-HOST.sock.
+  --jupyter-proxy-service NAME
+                          Named Jupyter Server Proxy service for Unix mode.
+                          Default: vnc-novnc.
   --slurm                 Enable scli socket setup in the generated kernelspec.
                           Automatically enabled for slurm-cli image variants.
   --no-slurm              Disable scli socket setup in the generated kernelspec.
@@ -172,6 +179,9 @@ pip_install=1
 source_wrapper=0
 slurm_override=""
 ssh_proxy_override=""
+novnc_transport="unix"
+novnc_socket=""
+jupyter_proxy_service="vnc-novnc"
 force=0
 all_variants=0
 prepull=0
@@ -190,6 +200,7 @@ variant_slurm=0
 variant_ssh_proxy=0
 scli_server_built=0
 ssh_proxy_server_built=0
+jupyter_proxy_config_installed=0
 
 while [[ "$#" -gt 0 ]]; do
     case "$1" in
@@ -229,6 +240,18 @@ while [[ "$#" -gt 0 ]]; do
         --source-wrapper)
             source_wrapper=1
             shift
+            ;;
+        --novnc-transport)
+            novnc_transport="${2:?--novnc-transport requires a value}"
+            shift 2
+            ;;
+        --novnc-socket)
+            novnc_socket="${2:?--novnc-socket requires a value}"
+            shift 2
+            ;;
+        --jupyter-proxy-service)
+            jupyter_proxy_service="${2:?--jupyter-proxy-service requires a value}"
+            shift 2
             ;;
         --slurm)
             slurm_override=1
@@ -320,6 +343,24 @@ case "${display_mode,,}" in
     *)
         printf 'Unsupported display mode: %s\n\n' "${display_mode}" >&2
         usage >&2
+        exit 2
+        ;;
+esac
+
+case "${novnc_transport,,}" in
+    unix|tcp)
+        novnc_transport="${novnc_transport,,}"
+        ;;
+    *)
+        printf 'Unsupported noVNC transport: %s\n\n' "${novnc_transport}" >&2
+        usage >&2
+        exit 2
+        ;;
+esac
+
+case "${jupyter_proxy_service}" in
+    ""|*/*)
+        printf 'Jupyter proxy service name must be non-empty and must not contain "/": %s\n' "${jupyter_proxy_service}" >&2
         exit 2
         ;;
 esac
@@ -425,6 +466,81 @@ build_ssh_proxy_server() {
     ssh_proxy_server_built=1
 }
 
+install_jupyter_proxy_config() {
+    if [[ "${novnc_transport}" != "unix" ]]; then
+        return 0
+    fi
+    if [[ "${jupyter_proxy_config_installed}" -eq 1 ]]; then
+        return 0
+    fi
+
+    local jupyter_config_dir="${HOME}/.jupyter"
+    local jupyter_config="${jupyter_config_dir}/jupyter_server_config.py"
+    mkdir -p "${jupyter_config_dir}"
+
+    python3 - "${jupyter_config}" "${jupyter_proxy_service}" "${novnc_socket}" <<'PY'
+from pathlib import Path
+import json
+import sys
+
+config_path = Path(sys.argv[1])
+service = sys.argv[2]
+configured_socket = sys.argv[3]
+
+begin = "# BEGIN vnc-novnc-container noVNC Unix socket proxy"
+end = "# END vnc-novnc-container noVNC Unix socket proxy"
+
+block = f"""{begin}
+import os as _vnc_novnc_os
+import re as _vnc_novnc_re
+import socket as _vnc_novnc_socket
+import tempfile as _vnc_novnc_tempfile
+
+def _vnc_novnc_safe_hostname():
+    return _vnc_novnc_re.sub(
+        r"[^A-Za-z0-9_.-]",
+        "_",
+        _vnc_novnc_socket.gethostname() or "unknown",
+    )
+
+def _vnc_novnc_socket_path():
+    configured = {json.dumps(configured_socket)}
+    if configured:
+        return _vnc_novnc_os.path.expandvars(_vnc_novnc_os.path.expanduser(configured))
+    return _vnc_novnc_os.path.join(
+        _vnc_novnc_tempfile.gettempdir(),
+        "vnc-novnc-{{}}".format(_vnc_novnc_os.getuid()),
+        "novnc-{{}}.sock".format(_vnc_novnc_safe_hostname()),
+    )
+
+c.ServerProxy.servers.update({{
+    {json.dumps(service)}: {{
+        "command": [],
+        "unix_socket": _vnc_novnc_socket_path(),
+        "launcher_entry": {{"enabled": False}},
+        "timeout": 30,
+    }}
+}})
+{end}
+"""
+
+existing = config_path.read_text() if config_path.exists() else ""
+if begin in existing and end in existing:
+    before, rest = existing.split(begin, 1)
+    _, after = rest.split(end, 1)
+    existing = before.rstrip() + "\n\n" + block + after
+else:
+    prefix = existing.rstrip()
+    existing = (prefix + "\n\n" if prefix else "") + block
+
+config_path.write_text(existing)
+PY
+
+    jupyter_proxy_config_installed=1
+    printf 'Installed Jupyter Server Proxy config: %s\n' "${jupyter_config}"
+    printf 'Restart the Jupyter session once for the noVNC Unix socket service to be loaded.\n'
+}
+
 install_one() {
     local install_distro="$1"
     local install_desktop="$2"
@@ -480,12 +596,12 @@ install_one() {
     cp "${kernel_src}/kernel-wrapper" "${tmpdir}/${install_kernel_name}/"
     cp "${kernel_src}/vnc-novnc.yaml" "${tmpdir}/${install_kernel_name}/"
 
-    python3 - "${tmpdir}/${install_kernel_name}/kernel.json" "${tmpdir}/${install_kernel_name}/vnc-novnc.yaml" "${install_display_name}" "${image}" "${variant_gpu}" "${variant_slurm}" "${variant_ssh_proxy}" "${display_mode}" "${extra_podman_args[@]}" <<'PY'
+    python3 - "${tmpdir}/${install_kernel_name}/kernel.json" "${tmpdir}/${install_kernel_name}/vnc-novnc.yaml" "${install_display_name}" "${image}" "${variant_gpu}" "${variant_slurm}" "${variant_ssh_proxy}" "${display_mode}" "${novnc_transport}" "${novnc_socket}" "${jupyter_proxy_service}" "${extra_podman_args[@]}" <<'PY'
 import json
 import sys
 
-kernel_json, kernel_yaml, display_name, image, gpu_enabled, slurm_enabled, ssh_proxy_enabled, display_mode = sys.argv[1:9]
-extra_podman_args = sys.argv[9:]
+kernel_json, kernel_yaml, display_name, image, gpu_enabled, slurm_enabled, ssh_proxy_enabled, display_mode, novnc_transport, novnc_socket, jupyter_proxy_service = sys.argv[1:12]
+extra_podman_args = sys.argv[12:]
 pull_policy = "missing"
 slurm_volumes = [
     "/global:/global",
@@ -553,6 +669,9 @@ set_yaml_scalar(lines, "gpu", "true" if gpu_enabled == "1" else "false")
 set_yaml_scalar(lines, "slurm", "true" if slurm_enabled == "1" else "false")
 set_yaml_scalar(lines, "ssh_proxy", "true" if ssh_proxy_enabled == "1" else "false")
 set_yaml_scalar(lines, "display_mode", display_mode)
+set_yaml_scalar(lines, "novnc_transport", novnc_transport)
+set_yaml_scalar(lines, "novnc_socket", novnc_socket)
+set_yaml_scalar(lines, "jupyter_proxy_service", jupyter_proxy_service)
 set_yaml_list(lines, "extra_podman_args", extra_podman_args)
 if slurm_enabled == "1":
     set_yaml_list(lines, "volume", slurm_volumes)
@@ -832,6 +951,7 @@ PY
     mkdir -p "$(dirname "${kernel_dst}")"
     rm -rf "${kernel_dst}"
     cp -R "${tmpdir}/${install_kernel_name}" "${kernel_dst}"
+    install_jupyter_proxy_config
 
     printf 'Installed kernelspec: %s\n' "${kernel_dst}"
     printf 'Kernel display name: %s\n' "${install_display_name}"
