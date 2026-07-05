@@ -165,6 +165,18 @@ set_variant_metadata() {
     esac
 }
 
+apply_novnc_transport_image_metadata() {
+    if [[ "${novnc_transport}" != "unix" ]]; then
+        return 0
+    fi
+
+    case "${distro}:${desktop}" in
+        opensuse15.6:xfce-slurm)
+            image="registry.nersc.gov/dseg/novnc:opensuse15.6-xfce-slurm-unix"
+            ;;
+    esac
+}
+
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_dir="$(cd "${script_dir}/.." && pwd)"
 install_python="$(python3 -c 'import sys; print(sys.executable)')"
@@ -551,6 +563,7 @@ install_one() {
     distro="$(canonical_distro "${install_distro}")"
     desktop="$(canonical_desktop "${install_desktop}")"
     set_variant_metadata
+    apply_novnc_transport_image_metadata
     if [[ -n "${slurm_override}" ]]; then
         variant_slurm="${slurm_override}"
     fi
@@ -966,6 +979,7 @@ prepull_one() {
     distro="$(canonical_distro "${pull_distro}")"
     desktop="$(canonical_desktop "${pull_desktop}")"
     set_variant_metadata
+    apply_novnc_transport_image_metadata
     prepull_image "${image}"
     printf 'Pre-pulled image for %s %s: %s\n' "${distro}" "${desktop}" "${image}"
 }
