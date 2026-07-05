@@ -188,6 +188,9 @@ else
 fi
 
 cleanup() {
+    if [[ -n "${unix_proxy_pid:-}" ]]; then
+        kill "${unix_proxy_pid}" >/dev/null 2>&1 || true
+    fi
     if [[ -n "${websockify_pid:-}" ]]; then
         kill "${websockify_pid}" >/dev/null 2>&1 || true
     fi
@@ -203,10 +206,7 @@ if [[ -n "${NOVNC_UNIX_SOCKET:-}" ]]; then
     mkdir -p "$(dirname "${NOVNC_UNIX_SOCKET}")"
     chmod 700 "$(dirname "${NOVNC_UNIX_SOCKET}")" >/dev/null 2>&1 || true
     rm -f "${NOVNC_UNIX_SOCKET}"
-    novnc_args+=(
-        --unix-listen "${NOVNC_UNIX_SOCKET}"
-        --unix-listen-mode 0600
-    )
+    novnc_args+=( "127.0.0.1:${NOVNC_PORT}" )
 else
     novnc_args+=( "${NOVNC_LISTEN}:${NOVNC_PORT}" )
 fi
@@ -214,12 +214,78 @@ novnc_args+=( "${NOVNC_VNC_HOST}:${novnc_vnc_port}" )
 append_words "${NOVNC_EXTRA_ARGS}" novnc_args
 
 if [[ -n "${NOVNC_UNIX_SOCKET:-}" ]]; then
-    printf 'Starting noVNC on Unix socket %s -> %s:%s\n' \
-        "${NOVNC_UNIX_SOCKET}" "${NOVNC_VNC_HOST}" "${novnc_vnc_port}"
+    printf 'Starting noVNC on Unix socket %s -> 127.0.0.1:%s -> %s:%s\n' \
+        "${NOVNC_UNIX_SOCKET}" "${NOVNC_PORT}" "${NOVNC_VNC_HOST}" "${novnc_vnc_port}"
 else
     printf 'Starting noVNC on http://%s:%s/vnc.html -> %s:%s\n' \
         "${NOVNC_LISTEN}" "${NOVNC_PORT}" "${NOVNC_VNC_HOST}" "${novnc_vnc_port}"
 fi
 websockify "${novnc_args[@]}" &
 websockify_pid="$!"
+
+if [[ -n "${NOVNC_UNIX_SOCKET:-}" ]]; then
+    python3 - "${NOVNC_UNIX_SOCKET}" "127.0.0.1" "${NOVNC_PORT}" <<'PY' &
+import os
+import socket
+import sys
+import threading
+
+listen_path, target_host, target_port = sys.argv[1], sys.argv[2], int(sys.argv[3])
+
+try:
+    os.unlink(listen_path)
+except FileNotFoundError:
+    pass
+
+listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+listener.bind(listen_path)
+os.chmod(listen_path, 0o600)
+listener.listen(128)
+
+def copy_stream(src, dst):
+    try:
+        while True:
+            data = src.recv(65536)
+            if not data:
+                break
+            dst.sendall(data)
+    except OSError:
+        pass
+    try:
+        dst.shutdown(socket.SHUT_WR)
+    except OSError:
+        pass
+
+def handle_client(client):
+    try:
+        upstream = socket.create_connection((target_host, target_port))
+    except OSError:
+        client.close()
+        return
+
+    threads = [
+        threading.Thread(target=copy_stream, args=(client, upstream), daemon=True),
+        threading.Thread(target=copy_stream, args=(upstream, client), daemon=True),
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    client.close()
+    upstream.close()
+
+try:
+    while True:
+        client, _ = listener.accept()
+        threading.Thread(target=handle_client, args=(client,), daemon=True).start()
+finally:
+    listener.close()
+    try:
+        os.unlink(listen_path)
+    except FileNotFoundError:
+        pass
+PY
+    unix_proxy_pid="$!"
+fi
+
 wait "${websockify_pid}"
