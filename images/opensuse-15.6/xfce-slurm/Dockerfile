@@ -20,6 +20,7 @@ FROM opensuse/leap:15.6
 ARG TARGETARCH
 ARG SSHPROXY_VERSION=2.1.2
 ARG SSHPROXY_ARCH
+ARG PARAVIEW_VERSION=5.13.3
 
 RUN \
     set -eu; \
@@ -127,9 +128,31 @@ RUN \
         Mesa-gallium \
         Mesa-libEGL1 \
         Mesa-libGL1 \
-        libgthread-2_0-0 && \
+        libgthread-2_0-0 \
+        libxcb-xinerama0 && \
     zypper --non-interactive clean --all && \
     rm -rf /var/cache/zypp/*
+
+# Install the official ParaView binary under /usr/local because /opt may be a
+# host bind mount in NERSC programming-environment containers.
+RUN \
+    set -eu; \
+    case "${TARGETARCH:-amd64}" in \
+        amd64|x86_64) paraview_arch=x86_64 ;; \
+        *) echo "Unsupported ParaView architecture: ${TARGETARCH:-}" >&2; exit 1 ;; \
+    esac; \
+    paraview_name="ParaView-${PARAVIEW_VERSION}-MPI-Linux-Python3.10-${paraview_arch}"; \
+    paraview_url="https://www.paraview.org/files/v5.13/${paraview_name}.tar.gz"; \
+    curl --fail --location --show-error \
+        --retry 5 --retry-all-errors --retry-delay 5 --retry-max-time 1800 --connect-timeout 30 \
+        "${paraview_url}" --output /tmp/paraview.tar.gz && \
+    mkdir -p "/usr/local/paraview-${PARAVIEW_VERSION}" && \
+    tar -xzf /tmp/paraview.tar.gz -C "/usr/local/paraview-${PARAVIEW_VERSION}" --strip-components=1 && \
+    ln -sfn "/usr/local/paraview-${PARAVIEW_VERSION}" /usr/local/paraview && \
+    for exe in paraview pvpython pvserver pvbatch pvdataserver pvrenderserver; do \
+        ln -sfn "/usr/local/paraview/bin/${exe}" "/usr/local/bin/${exe}"; \
+    done && \
+    rm -f /tmp/paraview.tar.gz
 
 # Prefer the host NERSC/Cray Lmod stack when /opt is mounted, and restore the
 # same default programming environment modules used by NERSC login shells.

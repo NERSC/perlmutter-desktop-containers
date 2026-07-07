@@ -81,8 +81,11 @@ desktop image.
 5. Refresh JupyterLab if needed, then create a new notebook with the
    `VNC-DISTRO-DESKTOP` kernel, for example `VNC-ubuntu24.04-xfce`.
 
-The first notebook cell output shows the noVNC login URL and the one-time VNC
-password. If you need to show them again:
+The first notebook cell output shows the noVNC login URL and connection
+details. Unix-socket kernels still create a random VNC password internally, but
+the security boundary is the authenticated Jupyter Server Proxy path plus the
+user-private Unix socket, not a host TCP noVNC port. If you need to show the
+connection details again:
 
 ```python
 import vnc_novnc
@@ -90,8 +93,9 @@ import vnc_novnc
 vnc_novnc.display_connection()
 ```
 
-Open the noVNC URL in the browser and enter the VNC password. Closing the
-notebook stops the noVNC container.
+Open the noVNC URL in the browser. If noVNC prompts for a VNC password, use the
+printed password; otherwise it can be ignored for Unix-socket kernels. Closing
+the notebook stops the noVNC container.
 
 The user workflow is:
 
@@ -105,9 +109,9 @@ flowchart TD
     install[Run install-jupyter-kernel.sh with prepull]
     notebook[Start a notebook with the new VNC kernel]
     firstcell[Run anything in the first cell]
-    output[Notebook prints noVNC URL and one-time password]
+    output[Notebook prints noVNC URL and connection details]
     openurl[Click the noVNC URL]
-    password[Enter the one-time password]
+    password[Enter VNC password only if prompted]
     desktop[Use the noVNC desktop]
 
     login --> session
@@ -502,20 +506,20 @@ flowchart LR
     hub[JupyterHub jupyter.nersc.gov]
     proxy[Jupyter Server Proxy named service]
     socket[User-private Unix socket<br/>/tmp/vnc-novnc-UID/novnc-HOST.sock]
-    novnc[Container noVNC websockify]
-    bridge[websockify bridge]
+    unixproxy[Container Unix socket forwarder]
+    novnc[Container noVNC websockify<br/>127.0.0.1:6080 only]
     vnc[TigerVNC server port 5901]
     desktop[VNC desktop and kernel process]
     wrapper[Runner or Jupyter kernel wrapper]
     podman[podman-hpc run socket-dir mount]
-    password[One-time VNC password file]
+    password[Random VNC password file<br/>internal fallback]
 
     browser --> hub
     hub --> proxy
     proxy --> socket
-    socket --> novnc
-    novnc --> bridge
-    bridge --> vnc
+    socket --> unixproxy
+    unixproxy --> novnc
+    novnc --> vnc
     vnc --> desktop
 
     wrapper --> podman
@@ -673,7 +677,7 @@ The wrapper:
 
 - Uses a user-private noVNC Unix socket when `novnc_transport: unix` is set, or
   chooses an available host port when `novnc_transport: tcp`.
-- Generates a one-time VNC password.
+- Generates a random VNC password for the internal TigerVNC server.
 - Writes the password to a temporary `0600` file on the host.
 - Mounts that file read-only at `/run/secrets/vnc-password` inside the
   container.
@@ -698,13 +702,17 @@ The wrapper:
 - Passes non-secret noVNC connection metadata into the container.
 
 Inside the container, `vnc-novnc-jupyter-kernel` starts VNC/noVNC in the
-background and then starts `ipykernel`. The image declares only the noVNC port
-as exposed metadata; raw VNC remains internal unless a runner explicitly
-publishes it.
+background and then starts `ipykernel`. For Unix mode, websockify listens only
+on container loopback and a small Unix socket forwarder accepts connections
+from the mounted socket path. The openSUSE Slurm Unix image does not declare
+`6080/tcp` as exposed image metadata, so `podman-hpc ps` does not advertise a
+noVNC TCP port for new Unix-mode containers. Raw VNC remains internal unless a
+runner explicitly publishes it.
 
-After selecting a `VNC-DISTRO-DESKTOP` kernel, the noVNC URL and one-time
-password are displayed automatically in the first notebook cell output. To show
-them again manually:
+After selecting a `VNC-DISTRO-DESKTOP` kernel, the noVNC URL and connection
+details are displayed automatically in the first notebook cell output. In
+Unix-socket mode, the printed VNC password is an internal fallback and is only
+needed if noVNC prompts for it. To show the details again manually:
 
 ```python
 import vnc_novnc
