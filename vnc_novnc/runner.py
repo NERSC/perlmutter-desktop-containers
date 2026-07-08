@@ -112,11 +112,33 @@ def image_inspect_ok(podman_hpc, image):
     )
 
 
+def image_list_has_image(podman_hpc, image):
+    try:
+        result = subprocess.run(
+            [podman_hpc, "images", "--format", "{{.Repository}}:{{.Tag}}", image],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            universal_newlines=True,
+            check=False,
+        )
+    except OSError:
+        return False
+
+    if result.returncode != 0:
+        return False
+
+    return any(line.strip() == image for line in result.stdout.splitlines())
+
+
+def image_available(podman_hpc, image):
+    return image_inspect_ok(podman_hpc, image) or image_list_has_image(podman_hpc, image)
+
+
 def prepare_image(podman_hpc, image, pull_policy):
     if not pull_policy or pull_policy == "never":
         return 0
 
-    if pull_policy == "missing" and image_inspect_ok(podman_hpc, image):
+    if pull_policy == "missing" and image_available(podman_hpc, image):
         return 0
 
     print("Pre-pulling image with podman-hpc: {}".format(image), file=sys.stderr, flush=True)

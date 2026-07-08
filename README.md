@@ -47,8 +47,10 @@ Common choices include `debian12 fvwm3`, `debian12 xfce`, `ubuntu24.04 fvwm3`,
 
 4. Load the NERSC Python module, log in to the NERSC registry if you will pull
    images from `registry.nersc.gov`, and install the selected kernelspec.
-   `--prepull` downloads the selected image during installation so the first
-   kernel startup does not have to wait for an image pull.
+   `--prepull` makes the selected image available during installation so the
+   first kernel startup does not have to wait for an image pull. If a migrated
+   `podman-hpc` image is already present on Perlmutter scratch, the installer
+   reuses it instead of pulling again.
 
 ```sh
 module load python
@@ -64,8 +66,8 @@ podman-hpc login registry.nersc.gov
 scripts/install-jupyter-kernel.sh --all --prepull --force
 ```
 
-Pre-pulling all variants can take a while because it downloads every desktop
-image.
+Pre-pulling all variants can take a while when images are not already available
+locally or as migrated `podman-hpc` images.
 
 To refresh images later without reinstalling kernelspecs:
 
@@ -75,8 +77,8 @@ scripts/install-jupyter-kernel.sh "${DISTRO}" "${DESKTOP}" --prepull-only
 scripts/install-jupyter-kernel.sh --all --prepull-only
 ```
 
-The `--all --prepull-only` form can also take a while because it pulls every
-desktop image.
+The `--all --prepull-only` form can also take a while when images are not
+already available locally or as migrated `podman-hpc` images.
 
 5. Refresh JupyterLab if needed, then create a new notebook with the
    `VNC-DISTRO-DESKTOP` kernel, for example `VNC-ubuntu24.04-xfce`.
@@ -479,8 +481,9 @@ for the host UID to use `/bin/bash`.
 
 The Python runner and Jupyter kernel wrapper use explicit image preparation:
 
-- `missing` runs `podman-hpc image inspect` first and pulls only when the image
-  is missing or local image metadata is not usable. This is the default.
+- `missing` runs `podman-hpc image inspect` and checks the `podman-hpc images`
+  listing first. It pulls only when the image is missing from both normal local
+  image metadata and migrated `podman-hpc` image storage. This is the default.
 - `newer` and `always` run `podman-hpc pull` before starting the container.
   They keep images fresher, but startup is slower and depends on registry
   availability.
@@ -620,8 +623,8 @@ Useful installer options:
 | `DISTRO DESKTOP` | Select the image variant, for example `ubuntu24.04 xfce` or `opensuse15.6 xfce`. |
 | `--distro DISTRO`, `--desktop DESKTOP` | Select the same variant with explicit options. |
 | `--all` | Install one kernelspec for every supported distro/desktop combination. |
-| `--prepull` | Run `podman-hpc pull` for each selected image while installing kernelspecs. |
-| `--prepull-only` | Pull or refresh selected images without installing kernelspecs. |
+| `--prepull` | Ensure each selected image is available while installing kernelspecs; existing local or migrated `podman-hpc` images are reused. |
+| `--prepull-only` | Ensure selected images are available without installing kernelspecs. |
 | `--podman-hpc COMMAND` | Choose the `podman-hpc` command used by `--prepull`. |
 | `--source-wrapper` | Make the installed kernel wrapper import `vnc_novnc` directly from this checkout. |
 | `--novnc-transport unix\|tcp` | Choose noVNC exposure mode for the installed kernel. Default: `unix`. Use `tcp` as a fallback if Jupyter Server Proxy Unix sockets are unavailable. |

@@ -414,10 +414,33 @@ image_already_prepulled() {
     return 1
 }
 
+image_available_locally() {
+    local candidate="$1"
+    local listed_image
+
+    if "${podman_hpc}" image inspect "${candidate}" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    while IFS= read -r listed_image; do
+        if [[ "${listed_image}" == "${candidate}" ]]; then
+            return 0
+        fi
+    done < <("${podman_hpc}" images --format '{{.Repository}}:{{.Tag}}' "${candidate}" 2>/dev/null || true)
+
+    return 1
+}
+
 prepull_image() {
     local pull_image="$1"
 
     if image_already_prepulled "${pull_image}"; then
+        return 0
+    fi
+
+    if image_available_locally "${pull_image}"; then
+        printf 'Image already available locally or as a migrated podman-hpc image: %s\n' "${pull_image}"
+        prepulled_images+=("${pull_image}")
         return 0
     fi
 
@@ -981,7 +1004,7 @@ prepull_one() {
     set_variant_metadata
     apply_novnc_transport_image_metadata
     prepull_image "${image}"
-    printf 'Pre-pulled image for %s %s: %s\n' "${distro}" "${desktop}" "${image}"
+    printf 'Image available for %s %s: %s\n' "${distro}" "${desktop}" "${image}"
 }
 
 if [[ "${prepull_only}" -eq 1 ]]; then
@@ -1000,7 +1023,7 @@ if [[ "${prepull_only}" -eq 1 ]]; then
         prepull_one "${distro}" "${desktop}"
     fi
 
-    printf 'Image pre-pull complete.\n'
+    printf 'Image preparation complete.\n'
     exit 0
 fi
 
