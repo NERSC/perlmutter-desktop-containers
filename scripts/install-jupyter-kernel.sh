@@ -661,6 +661,11 @@ slurm_env = [
 with open(kernel_json) as handle:
     data = json.load(handle)
 data["display_name"] = display_name
+metadata = data.setdefault("metadata", {})
+metadata["kernel_provisioner"] = {
+    "provisioner_name": "vnc-novnc-ipc",
+    "config": {},
+}
 with open(kernel_json, "w") as handle:
     json.dump(data, handle, indent=2)
     handle.write("\n")

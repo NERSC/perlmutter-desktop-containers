@@ -13,5 +13,8 @@ dependencies = []
 run-vnc-novnc = "vnc_novnc.runner:main"
 vnc-novnc-kernel-wrapper = "vnc_novnc.kernel:main"
 
+[project.entry-points."jupyter_client.kernel_provisioners"]
+vnc-novnc-ipc = "vnc_novnc.provisioner:VncNovncIpcProvisioner"
+
 [tool.setuptools]
 packages = ["vnc_novnc"]

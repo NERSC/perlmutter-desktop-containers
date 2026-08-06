@@ -673,6 +673,8 @@ interpreter that installed the kernelspec:
 
 The wrapper:
 
+- Uses the `vnc-novnc-ipc` Jupyter provisioner so notebook kernel channels use
+  IPC sockets under `/tmp`, avoiding host TCP port mappings and host networking.
 - Uses a user-private noVNC Unix socket when `novnc_transport: unix` is set, or
   chooses an available host port when `novnc_transport: tcp`.
 - Generates a random VNC password for the internal TigerVNC server.
@@ -683,7 +685,8 @@ The wrapper:
   noVNC on the selected host port for TCP mode.
 - Names the container and explicitly stops/removes it if the host wrapper
   receives `INT`, `TERM`, or `HUP`.
-- Mounts `/tmp` directly for Jupyter runtime files.
+- Runs `podman-hpc` with `--jupyter`, matching the NERSC documented kernel
+  pattern for mounting Jupyter runtime paths.
 - Passes `--userns=keep-id` and `--group-add=keep-groups` from the YAML config.
 - Mounts the `scli-server` Unix socket and sets `SCLI_SOCKET` when `slurm: true`
   is set in the YAML config.

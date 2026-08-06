@@ -232,12 +232,11 @@ def build_podman_args(args, password_file, access_url, host_novnc_port, containe
         args.podman_hpc,
         "run",
         "--rm",
+        "--jupyter",
         "--name",
         container_name,
         "-v",
         "{}:/run/secrets/vnc-password:ro".format(password_file),
-        "-v",
-        "/tmp:/tmp",
         "-e",
         "VNC_PASSWORD_PLAIN_FILE=/run/secrets/vnc-password",
         "-e",
@@ -271,7 +270,7 @@ def build_podman_args(args, password_file, access_url, host_novnc_port, containe
             dry_run=args.dry_run,
             volumes=["/tmp:/tmp"] + list(args.volume),
             mounts=args.mount,
-            implicit_same_path_mounts=("/tmp",),
+            implicit_same_path_mounts=("/tmp", os.environ.get("HOME", "")),
         )
 
     run_policy = run_pull_policy(args.pull_policy)
