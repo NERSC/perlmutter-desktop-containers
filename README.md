@@ -6,7 +6,7 @@ helpers for running them directly or as Jupyter kernels with `podman-hpc`.
 The default image is Debian 12 with fvwm3:
 
 ```text
-ghcr.io/dingp/vnc-novnc-container:debian-12-main
+registry.nersc.gov/library/nersc/novnc:debian-12-main
 ```
 
 Images include TigerVNC, noVNC, Chromium, D-Bus session helpers, common fonts,
@@ -31,22 +31,11 @@ git clone https://github.com/dingp/vnc-novnc-container.git
 cd vnc-novnc-container
 ```
 
-3. Pick the distro and desktop variant you want:
-
-```sh
-scripts/install-jupyter-kernel.sh --list-variants
-
-DISTRO=ubuntu24.04
-DESKTOP=xfce
-```
-
-Common choices include `debian12 fvwm3`, `debian12 xfce`, `ubuntu24.04 fvwm3`,
-`ubuntu24.04 xfce`, `ubuntu24.04 xfce-slurm`, `ubuntu gpu-xfce`,
-`alma9 fvwm3`, `alma9 xfce`, `opensuse15.6 xfce`, and
-`opensuse15.6 xfce-slurm`.
-
-4. Load the NERSC Python module, log in to the NERSC registry if you will pull
-   images from `registry.nersc.gov`, and install the selected kernelspec.
+3. Load the NERSC Python module, log in to the NERSC registry, and install the
+   recommended openSUSE Leap 15.6 XFCE Slurm kernelspec. This is the default
+   quickstart path because it matches Perlmutter more closely and enables Unix
+   noVNC, Slurm CLI proxy, SSH proxy, and GPU visibility in the generated
+   kernelspec.
    `--prepull` makes the selected image available during installation so the
    first kernel startup does not have to wait for an image pull. If a migrated
    `podman-hpc` image is already present on Perlmutter scratch, the installer
@@ -55,33 +44,24 @@ Common choices include `debian12 fvwm3`, `debian12 xfce`, `ubuntu24.04 fvwm3`,
 ```sh
 module load python
 podman-hpc login registry.nersc.gov
-scripts/install-jupyter-kernel.sh "${DISTRO}" "${DESKTOP}" --prepull --force
+scripts/install-jupyter-kernel.sh opensuse15.6 xfce-slurm \
+  --novnc-transport unix \
+  --prepull \
+  --force
 ```
 
-To install every supported distro/desktop kernelspec and pre-pull every image:
+To refresh that image later without reinstalling the kernelspec:
 
 ```sh
 module load python
 podman-hpc login registry.nersc.gov
-scripts/install-jupyter-kernel.sh --all --prepull --force
+scripts/install-jupyter-kernel.sh opensuse15.6 xfce-slurm \
+  --novnc-transport unix \
+  --prepull-only
 ```
 
-Pre-pulling all variants can take a while when images are not already available
-locally or as migrated `podman-hpc` images.
-
-To refresh images later without reinstalling kernelspecs:
-
-```sh
-module load python
-scripts/install-jupyter-kernel.sh "${DISTRO}" "${DESKTOP}" --prepull-only
-scripts/install-jupyter-kernel.sh --all --prepull-only
-```
-
-The `--all --prepull-only` form can also take a while when images are not
-already available locally or as migrated `podman-hpc` images.
-
-5. Refresh JupyterLab if needed, then create a new notebook with the
-   `VNC-DISTRO-DESKTOP` kernel, for example `VNC-ubuntu24.04-xfce`.
+4. Refresh JupyterLab if needed, then create a new notebook with the
+   `VNC-opensuse15.6-xfce-slurm` kernel.
 
 The first notebook cell output shows the noVNC login URL and connection
 details. Unix-socket kernels still create a random VNC password internally, but
@@ -142,7 +122,7 @@ cd "${HOME}"
 git clone https://github.com/dingp/vnc-novnc-container.git
 cd vnc-novnc-container
 
-IMAGE=ghcr.io/dingp/vnc-novnc-container:ubuntu-24.04-xfce-main
+IMAGE=registry.nersc.gov/library/nersc/novnc:opensuse15.6-xfce-slurm-unix
 ```
 
 Other published image tags are listed in the image variant table below.
@@ -153,20 +133,24 @@ Other published image tags are listed in the image variant table below.
 module load python
 PYTHONPATH="${PWD}" scripts/run-vnc-novnc.py \
   --config scripts/run-vnc-novnc.yaml \
-  --image "${IMAGE}"
+  --image "${IMAGE}" \
+  --novnc-transport unix \
+  --gpu \
+  --slurm \
+  --ssh-proxy
 ```
 
 The helper pulls the image if needed, starts it with `podman-hpc`, prints a
 Jupyter Server Proxy noVNC URL, and prints a one-time VNC password. Open the URL
-and enter the password.
+and enter the password only if noVNC prompts for it.
 
 Example output:
 
 ```text
-Image: ghcr.io/dingp/vnc-novnc-container:ubuntu-24.04-xfce-main
-noVNC: https://jupyter.nersc.gov/user/your-user-name/perlmutter-login-node/proxy/49967/vnc.html?port=443&host=jupyter.nersc.gov&path=user%2Fyour-user-name%2Fperlmutter-login-node%2Fproxy%2F49967
+Image: registry.nersc.gov/library/nersc/novnc:opensuse15.6-xfce-slurm-unix
+noVNC: https://jupyter.nersc.gov/user/your-user-name/perlmutter-login-node/vnc-novnc/vnc.html?port=443&host=jupyter.nersc.gov&path=user%2Fyour-user-name%2Fperlmutter-login-node%2Fvnc-novnc%2Fwebsockify
 One-time VNC password: AbC123xY
-VNC server port is not exposed on the host.
+noVNC is exposed through a user-private Unix socket, not a host TCP port.
 ```
 
 If you run the helper outside a Jupyter terminal, provide the Jupyter server name
@@ -177,6 +161,10 @@ module load python
 PYTHONPATH="${PWD}" scripts/run-vnc-novnc.py \
   --config scripts/run-vnc-novnc.yaml \
   --image "${IMAGE}" \
+  --novnc-transport unix \
+  --gpu \
+  --slurm \
+  --ssh-proxy \
   --jupyter-proxy-server perlmutter-login-node
 ```
 
@@ -197,17 +185,17 @@ from `container/` and `vnc_novnc/`.
 
 | Variant | Dockerfile | Published tag |
 | --- | --- | --- |
-| Debian 12 + fvwm3 | `images/debian-12/fvwm3/Dockerfile` | `ghcr.io/dingp/vnc-novnc-container:debian-12-main` |
-| Debian 12 + XFCE | `images/debian-12/xfce/Dockerfile` | `ghcr.io/dingp/vnc-novnc-container:debian-12-xfce-main` |
-| Ubuntu 24.04 + fvwm3 | `images/ubuntu-24.04/fvwm3/Dockerfile` | `ghcr.io/dingp/vnc-novnc-container:ubuntu-24.04-fvwm3-main` |
-| Ubuntu 24.04 + XFCE | `images/ubuntu-24.04/xfce/Dockerfile` | `ghcr.io/dingp/vnc-novnc-container:ubuntu-24.04-xfce-main` |
-| Ubuntu 24.04 + XFCE + Slurm CLI proxy | `images/ubuntu-24.04/xfce-slurm/Dockerfile` | `ghcr.io/dingp/vnc-novnc-container:ubuntu-24.04-xfce-slurm-main` |
-| Ubuntu CUDA + GPU XFCE | `images/ubuntu/gpu-xfce/Dockerfile` | `ghcr.io/dingp/vnc-novnc-container:ubuntu-gpu-xfce-main` |
-| AlmaLinux 9 + fvwm3 | `images/alma-9/fvwm3/Dockerfile` | `ghcr.io/dingp/vnc-novnc-container:alma-9-fvwm3-main` |
-| AlmaLinux 9 + XFCE | `images/alma-9/xfce/Dockerfile` | `ghcr.io/dingp/vnc-novnc-container:alma-9-xfce-main` |
-| openSUSE Leap 15.6 + XFCE | `images/opensuse-15.6/xfce/Dockerfile` | `ghcr.io/dingp/vnc-novnc-container:opensuse-15.6-main` |
-| openSUSE Leap 15.6 + XFCE + Slurm CLI proxy | `images/opensuse-15.6/xfce-slurm/Dockerfile` | `registry.nersc.gov/dseg/novnc:opensuse15.6-xfce-slurm` |
-| openSUSE Leap 15.6 + XFCE + Slurm CLI proxy + Unix noVNC | `images/opensuse-15.6/xfce-slurm/Dockerfile` | `registry.nersc.gov/dseg/novnc:opensuse15.6-xfce-slurm-unix` |
+| Debian 12 + fvwm3 | `images/debian-12/fvwm3/Dockerfile` | `registry.nersc.gov/library/nersc/novnc:debian-12-main` |
+| Debian 12 + XFCE | `images/debian-12/xfce/Dockerfile` | `registry.nersc.gov/library/nersc/novnc:debian-12-xfce-main` |
+| Ubuntu 24.04 + fvwm3 | `images/ubuntu-24.04/fvwm3/Dockerfile` | `registry.nersc.gov/library/nersc/novnc:ubuntu-24.04-fvwm3-main` |
+| Ubuntu 24.04 + XFCE | `images/ubuntu-24.04/xfce/Dockerfile` | `registry.nersc.gov/library/nersc/novnc:ubuntu-24.04-xfce-main` |
+| Ubuntu 24.04 + XFCE + Slurm CLI proxy | `images/ubuntu-24.04/xfce-slurm/Dockerfile` | `registry.nersc.gov/library/nersc/novnc:ubuntu24.04-xfce-slurm` |
+| Ubuntu CUDA + GPU XFCE | `images/ubuntu/gpu-xfce/Dockerfile` | `registry.nersc.gov/library/nersc/novnc:ubuntu-gpu-xfce-main` |
+| AlmaLinux 9 + fvwm3 | `images/alma-9/fvwm3/Dockerfile` | `registry.nersc.gov/library/nersc/novnc:alma-9-fvwm3-main` |
+| AlmaLinux 9 + XFCE | `images/alma-9/xfce/Dockerfile` | `registry.nersc.gov/library/nersc/novnc:alma-9-xfce-main` |
+| openSUSE Leap 15.6 + XFCE | `images/opensuse-15.6/xfce/Dockerfile` | `registry.nersc.gov/library/nersc/novnc:opensuse-15.6-main` |
+| openSUSE Leap 15.6 + XFCE + Slurm CLI proxy | `images/opensuse-15.6/xfce-slurm/Dockerfile` | `registry.nersc.gov/library/nersc/novnc:opensuse15.6-xfce-slurm` |
+| openSUSE Leap 15.6 + XFCE + Slurm CLI proxy + Unix noVNC | `images/opensuse-15.6/xfce-slurm/Dockerfile` | `registry.nersc.gov/library/nersc/novnc:opensuse15.6-xfce-slurm-unix` |
 
 AlmaLinux 10 fvwm3 and XFCE Dockerfiles are scaffolded under `images/alma-10/`,
 but they are not in CI yet. `podman-hpc run` package probes against AlmaLinux
@@ -219,22 +207,22 @@ XFCE desktop stack.
 At NERSC, build with `podman-hpc`:
 
 ```sh
-podman-hpc build -f images/debian-12/fvwm3/Dockerfile -t ghcr.io/dingp/vnc-novnc-container:debian-12-main .
+podman-hpc build -f images/debian-12/fvwm3/Dockerfile -t registry.nersc.gov/library/nersc/novnc:debian-12-main .
 ```
 
 Build another variant by selecting its Dockerfile:
 
 ```sh
-podman-hpc build -f images/debian-12/xfce/Dockerfile -t ghcr.io/dingp/vnc-novnc-container:debian-12-xfce-main .
-podman-hpc build -f images/ubuntu-24.04/fvwm3/Dockerfile -t ghcr.io/dingp/vnc-novnc-container:ubuntu-24.04-fvwm3-main .
-podman-hpc build -f images/ubuntu-24.04/xfce/Dockerfile -t ghcr.io/dingp/vnc-novnc-container:ubuntu-24.04-xfce-main .
-podman-hpc build -f images/ubuntu-24.04/xfce-slurm/Dockerfile -t ghcr.io/dingp/vnc-novnc-container:ubuntu-24.04-xfce-slurm-main .
-podman-hpc build -f images/ubuntu/gpu-xfce/Dockerfile -t ghcr.io/dingp/vnc-novnc-container:ubuntu-gpu-xfce-main .
-podman-hpc build -f images/alma-9/fvwm3/Dockerfile -t ghcr.io/dingp/vnc-novnc-container:alma-9-fvwm3-main .
-podman-hpc build -f images/alma-9/xfce/Dockerfile -t ghcr.io/dingp/vnc-novnc-container:alma-9-xfce-main .
-podman-hpc build -f images/opensuse-15.6/xfce/Dockerfile -t ghcr.io/dingp/vnc-novnc-container:opensuse-15.6-main .
-podman-hpc build -f images/opensuse-15.6/xfce-slurm/Dockerfile -t registry.nersc.gov/dseg/novnc:opensuse15.6-xfce-slurm .
-podman-hpc build -f images/opensuse-15.6/xfce-slurm/Dockerfile -t registry.nersc.gov/dseg/novnc:opensuse15.6-xfce-slurm-unix .
+podman-hpc build -f images/debian-12/xfce/Dockerfile -t registry.nersc.gov/library/nersc/novnc:debian-12-xfce-main .
+podman-hpc build -f images/ubuntu-24.04/fvwm3/Dockerfile -t registry.nersc.gov/library/nersc/novnc:ubuntu-24.04-fvwm3-main .
+podman-hpc build -f images/ubuntu-24.04/xfce/Dockerfile -t registry.nersc.gov/library/nersc/novnc:ubuntu-24.04-xfce-main .
+podman-hpc build -f images/ubuntu-24.04/xfce-slurm/Dockerfile -t registry.nersc.gov/library/nersc/novnc:ubuntu24.04-xfce-slurm .
+podman-hpc build -f images/ubuntu/gpu-xfce/Dockerfile -t registry.nersc.gov/library/nersc/novnc:ubuntu-gpu-xfce-main .
+podman-hpc build -f images/alma-9/fvwm3/Dockerfile -t registry.nersc.gov/library/nersc/novnc:alma-9-fvwm3-main .
+podman-hpc build -f images/alma-9/xfce/Dockerfile -t registry.nersc.gov/library/nersc/novnc:alma-9-xfce-main .
+podman-hpc build -f images/opensuse-15.6/xfce/Dockerfile -t registry.nersc.gov/library/nersc/novnc:opensuse-15.6-main .
+podman-hpc build -f images/opensuse-15.6/xfce-slurm/Dockerfile -t registry.nersc.gov/library/nersc/novnc:opensuse15.6-xfce-slurm .
+podman-hpc build -f images/opensuse-15.6/xfce-slurm/Dockerfile -t registry.nersc.gov/library/nersc/novnc:opensuse15.6-xfce-slurm-unix .
 ```
 
 The `ubuntu gpu-xfce` kernelspec generated by `scripts/install-jupyter-kernel.sh`
@@ -244,7 +232,7 @@ Python runner:
 ```sh
 PYTHONPATH="${PWD}" scripts/run-vnc-novnc.py \
   --config scripts/run-vnc-novnc.yaml \
-  --image ghcr.io/dingp/vnc-novnc-container:ubuntu-gpu-xfce-main \
+  --image registry.nersc.gov/library/nersc/novnc:ubuntu-gpu-xfce-main \
   --gpu
 ```
 
@@ -344,7 +332,8 @@ flowchart TB
 ```sh
 PYTHONPATH="${PWD}" scripts/run-vnc-novnc.py \
   --config scripts/run-vnc-novnc.yaml \
-  --image registry.nersc.gov/dseg/novnc:opensuse15.6-xfce-slurm \
+  --image registry.nersc.gov/library/nersc/novnc:opensuse15.6-xfce-slurm-unix \
+  --novnc-transport unix \
   --gpu \
   --slurm \
   --ssh-proxy
@@ -384,8 +373,8 @@ extra `podman-hpc` arguments.
 Example output:
 
 ```text
-Image: ghcr.io/dingp/vnc-novnc-container:debian-12-main
-noVNC: https://jupyter.nersc.gov/user/your-user-name/muller-login-node-base/proxy/49967/vnc.html?port=443&host=jupyter.nersc.gov&path=user%2Fyour-user-name%2Fmuller-login-node-base%2Fproxy%2F49967
+Image: registry.nersc.gov/library/nersc/novnc:debian-12-main
+noVNC: https://jupyter.nersc.gov/user/your-user-name/muller-login-node-base/proxy/49967/vnc.html?port=443&host=jupyter.nersc.gov&path=user%2Fyour-user-name%2Fmuller-login-node-base%2Fproxy%2F49967%2Fwebsockify
 One-time VNC password: AbC123xY
 VNC server port is not exposed on the host.
 ```
@@ -438,7 +427,7 @@ Common settings:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `IMAGE` | `ghcr.io/dingp/vnc-novnc-container:debian-12-main` | Container image to run. |
+| `IMAGE` | `registry.nersc.gov/library/nersc/novnc:debian-12-main` | Container image to run. |
 | `HOST_NOVNC_ADDR` | `127.0.0.1` | Host address for noVNC port publication. |
 | `HOST_NOVNC_PORT` | random | Host port for noVNC. |
 | `NOVNC_PORT` | `6080` | noVNC port inside the container. |
@@ -540,7 +529,7 @@ For example, if the service prefix is:
 and the named proxy service is `vnc-novnc`, the printed URL is:
 
 ```text
-https://jupyter.nersc.gov/user/your-user-name/muller-login-node-base/vnc-novnc/vnc.html?port=443&host=jupyter.nersc.gov&path=user%2Fyour-user-name%2Fmuller-login-node-base%2Fvnc-novnc
+https://jupyter.nersc.gov/user/your-user-name/muller-login-node-base/vnc-novnc/vnc.html?port=443&host=jupyter.nersc.gov&path=user%2Fyour-user-name%2Fmuller-login-node-base%2Fvnc-novnc%2Fwebsockify
 ```
 
 If the helper is not running inside Jupyter, provide the server path explicitly:
@@ -566,10 +555,10 @@ scripts/run-vnc-novnc.py --novnc-transport unix
 Use another published variant:
 
 ```sh
-scripts/run-vnc-novnc.py --image ghcr.io/dingp/vnc-novnc-container:opensuse-15.6-main
-scripts/run-vnc-novnc.py --image ghcr.io/dingp/vnc-novnc-container:ubuntu-24.04-xfce-main
-scripts/run-vnc-novnc.py --image ghcr.io/dingp/vnc-novnc-container:ubuntu-24.04-xfce-slurm-main --slurm
-scripts/run-vnc-novnc.py --image ghcr.io/dingp/vnc-novnc-container:alma-9-xfce-main
+scripts/run-vnc-novnc.py --image registry.nersc.gov/library/nersc/novnc:opensuse-15.6-main
+scripts/run-vnc-novnc.py --image registry.nersc.gov/library/nersc/novnc:ubuntu-24.04-xfce-main
+scripts/run-vnc-novnc.py --image registry.nersc.gov/library/nersc/novnc:ubuntu24.04-xfce-slurm --slurm
+scripts/run-vnc-novnc.py --image registry.nersc.gov/library/nersc/novnc:alma-9-xfce-main
 ```
 
 Run outside Jupyter but still print a Jupyter proxy URL:
@@ -600,10 +589,13 @@ scripts/run-vnc-novnc.py -- --ipc=host
 
 ## Jupyter Kernel
 
-Install the default Debian 12 fvwm3 kernelspec:
+Install the recommended openSUSE Leap 15.6 XFCE Slurm kernelspec:
 
 ```sh
-scripts/install-jupyter-kernel.sh
+scripts/install-jupyter-kernel.sh opensuse15.6 xfce-slurm \
+  --novnc-transport unix \
+  --prepull \
+  --force
 ```
 
 This installs the Python package in editable mode for the current user and
@@ -613,8 +605,10 @@ copies the selected kernelspec into:
 ${HOME}/.local/share/jupyter/kernels/vnc-novnc-DISTRO-DESKTOP
 ```
 
-The default kernelspec directory is `vnc-novnc-debian12-fvwm3`; the display name
-is `VNC-debian12-fvwm3`.
+With Unix noVNC transport, this uses the
+`registry.nersc.gov/library/nersc/novnc:opensuse15.6-xfce-slurm-unix` image.
+The kernelspec directory is `vnc-novnc-opensuse15.6-xfce-slurm`; the display
+name is `VNC-opensuse15.6-xfce-slurm`.
 
 Useful installer options:
 
@@ -631,7 +625,7 @@ Useful installer options:
 | `--novnc-socket PATH` | Override the noVNC Unix socket path in the generated kernel config and Jupyter proxy config. |
 | `--jupyter-proxy-service NAME` | Named Jupyter Server Proxy service used by Unix socket mode. Default: `vnc-novnc`. |
 | `--display-mode MODE` | Set the kernelspec display preset. Use `1080p`, `fhd`, or `high` for `1920x1080` with `VNC_DEPTH=32`; non-default modes get a suffix in the default kernelspec name. |
-| `--slurm`, `--no-slurm` | Enable or disable `scli` socket setup in the generated kernelspec. The `ubuntu24.04 xfce-slurm` variant enables it automatically. |
+| `--slurm`, `--no-slurm` | Enable or disable `scli` socket setup in the generated kernelspec. Slurm image variants enable it automatically. |
 | `--ssh-proxy`, `--no-ssh-proxy` | Enable or disable host SSH proxy socket setup in the generated kernelspec. Slurm image variants enable it automatically. |
 | `--no-pip-install` | Copy the kernelspec without running `pip install`. |
 | `--prefix DIR` | Install under `DIR/share/jupyter/kernels`. |
@@ -643,6 +637,7 @@ Useful installer options:
 Examples:
 
 ```sh
+scripts/install-jupyter-kernel.sh opensuse15.6 xfce-slurm --novnc-transport unix --prepull --force
 scripts/install-jupyter-kernel.sh ubuntu24.04 xfce --force
 scripts/install-jupyter-kernel.sh ubuntu24.04 xfce-slurm --force
 scripts/install-jupyter-kernel.sh opensuse15.6 xfce --force
@@ -664,7 +659,7 @@ Restart the Jupyter session after the first Unix-mode install so the
 JupyterLab if the new kernel does not appear immediately.
 
 For `opensuse15.6 xfce-slurm`, Unix-mode installs use the separate image tag
-`registry.nersc.gov/dseg/novnc:opensuse15.6-xfce-slurm-unix` so the TCP-mode
+`registry.nersc.gov/library/nersc/novnc:opensuse15.6-xfce-slurm-unix` so the TCP-mode
 image tag remains unchanged.
 
 ## Kernel Behavior
@@ -726,7 +721,7 @@ vnc_novnc.display_connection()
 The sample kernel config is `kernels/vnc-novnc/vnc-novnc.yaml`:
 
 ```yaml
-image: ghcr.io/dingp/vnc-novnc-container:debian-12-main
+image: registry.nersc.gov/library/nersc/novnc:debian-12-main
 userns: keep-id
 keep_groups: true
 pull_policy: missing

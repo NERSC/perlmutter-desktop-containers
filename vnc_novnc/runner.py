@@ -15,7 +15,7 @@ import time
 import urllib.parse
 
 
-DEFAULT_IMAGE = "ghcr.io/dingp/vnc-novnc-container:debian-12-main"
+DEFAULT_IMAGE = "registry.nersc.gov/library/nersc/novnc:debian-12-main"
 DEFAULT_PASSWORD_LENGTH = 8
 DEFAULT_NOVNC_PORT = "6080"
 DEFAULT_VNC_PORT = "5901"

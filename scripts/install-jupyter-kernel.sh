@@ -60,16 +60,16 @@ EOF
 list_variants() {
     cat <<'EOF'
 Supported variants:
-  debian12      fvwm3  ghcr.io/dingp/vnc-novnc-container:debian-12-main
-  debian12      xfce   ghcr.io/dingp/vnc-novnc-container:debian-12-xfce-main
-  ubuntu24.04   fvwm3  ghcr.io/dingp/vnc-novnc-container:ubuntu-24.04-fvwm3-main
-  ubuntu24.04   xfce   ghcr.io/dingp/vnc-novnc-container:ubuntu-24.04-xfce-main
-  ubuntu24.04   xfce-slurm registry.nersc.gov/dseg/novnc:ubuntu24.04-xfce-slurm
-  ubuntu        gpu-xfce ghcr.io/dingp/vnc-novnc-container:ubuntu-gpu-xfce-main
-  alma9         fvwm3  ghcr.io/dingp/vnc-novnc-container:alma-9-fvwm3-main
-  alma9         xfce   ghcr.io/dingp/vnc-novnc-container:alma-9-xfce-main
-  opensuse15.6  xfce   ghcr.io/dingp/vnc-novnc-container:opensuse-15.6-main
-  opensuse15.6  xfce-slurm registry.nersc.gov/dseg/novnc:opensuse15.6-xfce-slurm
+  debian12      fvwm3  registry.nersc.gov/library/nersc/novnc:debian-12-main
+  debian12      xfce   registry.nersc.gov/library/nersc/novnc:debian-12-xfce-main
+  ubuntu24.04   fvwm3  registry.nersc.gov/library/nersc/novnc:ubuntu-24.04-fvwm3-main
+  ubuntu24.04   xfce   registry.nersc.gov/library/nersc/novnc:ubuntu-24.04-xfce-main
+  ubuntu24.04   xfce-slurm registry.nersc.gov/library/nersc/novnc:ubuntu24.04-xfce-slurm
+  ubuntu        gpu-xfce registry.nersc.gov/library/nersc/novnc:ubuntu-gpu-xfce-main
+  alma9         fvwm3  registry.nersc.gov/library/nersc/novnc:alma-9-fvwm3-main
+  alma9         xfce   registry.nersc.gov/library/nersc/novnc:alma-9-xfce-main
+  opensuse15.6  xfce   registry.nersc.gov/library/nersc/novnc:opensuse-15.6-main
+  opensuse15.6  xfce-slurm registry.nersc.gov/library/nersc/novnc:opensuse15.6-xfce-slurm
 EOF
 }
 
@@ -111,47 +111,47 @@ set_variant_metadata() {
 
     case "${distro}:${desktop}" in
         debian12:fvwm3)
-            image="ghcr.io/dingp/vnc-novnc-container:debian-12-main"
+            image="registry.nersc.gov/library/nersc/novnc:debian-12-main"
             variant_slug="debian12-fvwm3"
             ;;
         debian12:xfce)
-            image="ghcr.io/dingp/vnc-novnc-container:debian-12-xfce-main"
+            image="registry.nersc.gov/library/nersc/novnc:debian-12-xfce-main"
             variant_slug="debian12-xfce"
             ;;
         ubuntu24.04:fvwm3)
-            image="ghcr.io/dingp/vnc-novnc-container:ubuntu-24.04-fvwm3-main"
+            image="registry.nersc.gov/library/nersc/novnc:ubuntu-24.04-fvwm3-main"
             variant_slug="ubuntu24.04-fvwm3"
             ;;
         ubuntu24.04:xfce)
-            image="ghcr.io/dingp/vnc-novnc-container:ubuntu-24.04-xfce-main"
+            image="registry.nersc.gov/library/nersc/novnc:ubuntu-24.04-xfce-main"
             variant_slug="ubuntu24.04-xfce"
             ;;
         ubuntu24.04:xfce-slurm)
-            image="registry.nersc.gov/dseg/novnc:ubuntu24.04-xfce-slurm"
+            image="registry.nersc.gov/library/nersc/novnc:ubuntu24.04-xfce-slurm"
             variant_slug="ubuntu24.04-xfce-slurm"
             variant_gpu=1
             variant_slurm=1
             variant_ssh_proxy=1
             ;;
         ubuntu:gpu-xfce)
-            image="ghcr.io/dingp/vnc-novnc-container:ubuntu-gpu-xfce-main"
+            image="registry.nersc.gov/library/nersc/novnc:ubuntu-gpu-xfce-main"
             variant_slug="ubuntu-gpu-xfce"
             variant_gpu=1
             ;;
         alma9:fvwm3)
-            image="ghcr.io/dingp/vnc-novnc-container:alma-9-fvwm3-main"
+            image="registry.nersc.gov/library/nersc/novnc:alma-9-fvwm3-main"
             variant_slug="alma9-fvwm3"
             ;;
         alma9:xfce)
-            image="ghcr.io/dingp/vnc-novnc-container:alma-9-xfce-main"
+            image="registry.nersc.gov/library/nersc/novnc:alma-9-xfce-main"
             variant_slug="alma9-xfce"
             ;;
         opensuse15.6:xfce)
-            image="ghcr.io/dingp/vnc-novnc-container:opensuse-15.6-main"
+            image="registry.nersc.gov/library/nersc/novnc:opensuse-15.6-main"
             variant_slug="opensuse15.6-xfce"
             ;;
         opensuse15.6:xfce-slurm)
-            image="registry.nersc.gov/dseg/novnc:opensuse15.6-xfce-slurm"
+            image="registry.nersc.gov/library/nersc/novnc:opensuse15.6-xfce-slurm"
             variant_slug="opensuse15.6-xfce-slurm"
             variant_gpu=1
             variant_slurm=1
@@ -172,7 +172,7 @@ apply_novnc_transport_image_metadata() {
 
     case "${distro}:${desktop}" in
         opensuse15.6:xfce-slurm)
-            image="registry.nersc.gov/dseg/novnc:opensuse15.6-xfce-slurm-unix"
+            image="registry.nersc.gov/library/nersc/novnc:opensuse15.6-xfce-slurm-unix"
             ;;
     esac
 }

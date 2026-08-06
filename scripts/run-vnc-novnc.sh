@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-IMAGE="${IMAGE:-ghcr.io/dingp/vnc-novnc-container:debian-12-main}"
+IMAGE="${IMAGE:-registry.nersc.gov/library/nersc/novnc:debian-12-main}"
 CONTAINER_NOVNC_PORT="${NOVNC_PORT:-6080}"
 HOST_NOVNC_ADDR="${HOST_NOVNC_ADDR:-127.0.0.1}"
 HOST_NOVNC_PORT="${HOST_NOVNC_PORT:-}"
