@@ -188,7 +188,7 @@ PY
 
 jupyter_proxy_url() {
     local prefix="${JUPYTER_PROXY_PREFIX}"
-    local proxy_path encoded_path base_url
+    local proxy_path encoded_path base_url ws_path
 
     if [[ -z "${prefix}" ]]; then
         if [[ -z "${JUPYTER_PROXY_USER}" || -z "${JUPYTER_PROXY_SERVER}" ]]; then
@@ -200,7 +200,8 @@ jupyter_proxy_url() {
     prefix="${prefix#/}"
     prefix="${prefix%/}"
     proxy_path="${prefix}/proxy/${HOST_NOVNC_PORT}"
-    encoded_path="$(urlencode "${proxy_path}")"
+    ws_path="${proxy_path}/websockify"
+    encoded_path="$(urlencode "${ws_path}")"
     base_url="${JUPYTER_PROXY_BASE_URL%/}"
 
     printf '%s/%s/vnc.html?port=%s&host=%s&path=%s' \
@@ -209,7 +210,7 @@ jupyter_proxy_url() {
 
 jupyter_proxy_service_url() {
     local prefix="${JUPYTER_PROXY_PREFIX}"
-    local proxy_path encoded_path base_url service
+    local proxy_path encoded_path base_url service ws_path
 
     if [[ -z "${prefix}" ]]; then
         if [[ -z "${JUPYTER_PROXY_USER}" || -z "${JUPYTER_PROXY_SERVER}" ]]; then
@@ -223,7 +224,8 @@ jupyter_proxy_service_url() {
     service="${JUPYTER_PROXY_SERVICE#/}"
     service="${service%/}"
     proxy_path="${prefix}/${service}"
-    encoded_path="$(urlencode "${proxy_path}")"
+    ws_path="${proxy_path}/websockify"
+    encoded_path="$(urlencode "${ws_path}")"
     base_url="${JUPYTER_PROXY_BASE_URL%/}"
 
     printf '%s/%s/vnc.html?port=%s&host=%s&path=%s' \

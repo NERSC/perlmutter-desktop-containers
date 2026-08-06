@@ -874,7 +874,7 @@ def jupyter_proxy_url(args, host_novnc_port):
 
     prefix = prefix.strip("/")
     proxy_path = "{}/proxy/{}".format(prefix, host_novnc_port)
-    encoded_path = urllib.parse.quote(proxy_path, safe="")
+    encoded_path = urllib.parse.quote("{}/websockify".format(proxy_path), safe="")
     base_url = args.jupyter_proxy_base_url.rstrip("/")
 
     return "{}{}/vnc.html?port={}&host={}&path={}".format(
@@ -896,7 +896,7 @@ def jupyter_proxy_service_url(args, service_name):
 
     prefix = prefix.strip("/")
     service_path = "{}/{}".format(prefix, service_name.strip("/"))
-    encoded_path = urllib.parse.quote(service_path, safe="")
+    encoded_path = urllib.parse.quote("{}/websockify".format(service_path), safe="")
     base_url = args.jupyter_proxy_base_url.rstrip("/")
 
     return "{}{}/vnc.html?port={}&host={}&path={}".format(
