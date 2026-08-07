@@ -235,6 +235,8 @@ def build_podman_args(args, password_file, access_url, host_novnc_port, containe
         "--jupyter",
         "--name",
         container_name,
+        "--workdir",
+        os.getcwd(),
         "-v",
         "{}:/run/secrets/vnc-password:ro".format(password_file),
         "-e",
