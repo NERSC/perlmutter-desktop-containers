@@ -673,8 +673,10 @@ interpreter that installed the kernelspec:
 
 The wrapper:
 
-- Uses the `vnc-novnc-ipc` Jupyter provisioner so notebook kernel channels use
-  IPC sockets under `/tmp`, avoiding host TCP port mappings and host networking.
+- Uses the Jupyter connection file as provided by the NERSC Jupyter server.
+  NERSC starts the single-user server with IPC transport, so notebook kernel
+  channels avoid host TCP port mappings and host networking without a custom
+  kernelspec provisioner.
 - Uses a user-private noVNC Unix socket when `novnc_transport: unix` is set, or
   chooses an available host port when `novnc_transport: tcp`.
 - Generates a random VNC password for the internal TigerVNC server.
