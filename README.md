@@ -27,7 +27,7 @@ it.
 
 ```sh
 cd "${HOME}"
-git clone https://github.com/dingp/vnc-novnc-container.git
+git clone https://gitlab.nersc.gov/nersc/dseg/vnc-novnc-container.git
 cd vnc-novnc-container
 ```
 
