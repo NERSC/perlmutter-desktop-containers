@@ -33,6 +33,8 @@ Options:
                           Default: ${HOME}/.local
   --no-pip-install        Do not run "python3 -m pip install --user -e .".
   --source-wrapper        Install a wrapper that imports vnc_novnc from this checkout.
+                          This is the default.
+  --no-source-wrapper     Do not add this checkout to PYTHONPATH in the wrapper.
   --novnc-transport MODE  noVNC exposure mode for installed kernels: unix or tcp.
                           Default: unix.
   --novnc-socket PATH     noVNC Unix socket path. Default is computed at runtime:
@@ -188,7 +190,7 @@ display_name=""
 display_mode="default"
 prefix="${HOME}/.local"
 pip_install=1
-source_wrapper=0
+source_wrapper=1
 slurm_override=""
 ssh_proxy_override=""
 novnc_transport="unix"
@@ -251,6 +253,10 @@ while [[ "$#" -gt 0 ]]; do
             ;;
         --source-wrapper)
             source_wrapper=1
+            shift
+            ;;
+        --no-source-wrapper)
+            source_wrapper=0
             shift
             ;;
         --novnc-transport)

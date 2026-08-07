@@ -620,7 +620,8 @@ Useful installer options:
 | `--prepull` | Ensure each selected image is available while installing kernelspecs; existing local or migrated `podman-hpc` images are reused. |
 | `--prepull-only` | Ensure selected images are available without installing kernelspecs. |
 | `--podman-hpc COMMAND` | Choose the `podman-hpc` command used by `--prepull`. |
-| `--source-wrapper` | Make the installed kernel wrapper import `vnc_novnc` directly from this checkout. |
+| `--source-wrapper` | Make the installed kernel wrapper import `vnc_novnc` directly from this checkout. Default behavior. |
+| `--no-source-wrapper` | Do not add this checkout to `PYTHONPATH` in the installed wrapper. |
 | `--novnc-transport unix\|tcp` | Choose noVNC exposure mode for the installed kernel. Default: `unix`. Use `tcp` as a fallback if Jupyter Server Proxy Unix sockets are unavailable. |
 | `--novnc-socket PATH` | Override the noVNC Unix socket path in the generated kernel config and Jupyter proxy config. |
 | `--jupyter-proxy-service NAME` | Named Jupyter Server Proxy service used by Unix socket mode. Default: `vnc-novnc`. |
@@ -648,10 +649,10 @@ scripts/install-jupyter-kernel.sh ubuntu24.04 xfce --prepull-only
 scripts/install-jupyter-kernel.sh --all --prepull-only
 ```
 
-For development from a checkout:
+To disable checkout-based imports and rely only on the Python package install:
 
 ```sh
-scripts/install-jupyter-kernel.sh --source-wrapper --force
+scripts/install-jupyter-kernel.sh --no-source-wrapper --force
 ```
 
 Restart the Jupyter session after the first Unix-mode install so the
