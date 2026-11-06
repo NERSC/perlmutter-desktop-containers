@@ -1,4 +1,4 @@
-# VNC/noVNC Desktop Container for NERSC
+# Perlmutter Desktop Containers (VNC/noVNC)
 
 This repository builds VNC/noVNC desktop containers for NERSC and provides
 helpers for running them directly or as Jupyter kernels with `podman-hpc`.
@@ -51,8 +51,8 @@ it.
 
 ```sh
 cd "${HOME}"
-git clone https://github.com/nersc/vnc-novnc-container.git
-cd vnc-novnc-container
+git clone https://github.com/nersc/perlmutter-desktop-containers.git
+cd perlmutter-desktop-containers
 ```
 
 3. Load the NERSC Python and Go modules, log in to the NERSC registry, and
@@ -144,8 +144,8 @@ or selecting a Jupyter kernel.
 
 ```sh
 cd "${HOME}"
-git clone https://github.com/nersc/vnc-novnc-container.git
-cd vnc-novnc-container
+git clone https://github.com/nersc/perlmutter-desktop-containers.git
+cd perlmutter-desktop-containers
 ```
 
 This path uses the default Debian 12 fvwm3 image. Other image tags are listed
