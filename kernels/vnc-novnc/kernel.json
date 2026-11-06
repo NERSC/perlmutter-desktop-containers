@@ -1,0 +1,14 @@
+{
+  "argv": [
+    "{resource_dir}/kernel-wrapper",
+    "--config",
+    "{resource_dir}/vnc-novnc.yaml",
+    "-f",
+    "{connection_file}"
+  ],
+  "display_name": "Debian VNC/noVNC (podman-hpc)",
+  "language": "python",
+  "metadata": {
+    "debugger": true
+  }
+}

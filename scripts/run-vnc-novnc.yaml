@@ -1,0 +1,29 @@
+# Default NERSC-oriented configuration for scripts/run-vnc-novnc.py.
+# Values in strings are expanded from the host environment at runtime.
+
+userns: keep-id
+keep_groups: true
+pull_policy: missing
+display_mode: default
+gpu: false
+slurm: false
+ssh_proxy: false
+
+volume:
+  - "/global:/global"
+  - "${SCRATCH}:${SCRATCH}:rw"
+  - "${CFS}:${CFS}:rw"
+  - "/opt:/opt"
+  - "/etc/cray-pe.d:/etc/cray-pe.d:ro"
+  - "/etc/clustername:/etc/clustername:ro"
+  - "/etc/environment:/etc/environment:ro"
+
+env:
+  - "HOME"
+  - "MODULEPATH"
+  - "MODULEPATH_ROOT"
+  - "MODULESHOME"
+  - "PE_ENV"
+  - "LMOD_FAMILY_MPI"
+  - "LMOD_FAMILY_CUDATOOLKIT"
+  - "LMOD_FAMILY_CUDATOOLKIT_VERSION"

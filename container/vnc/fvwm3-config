@@ -1,0 +1,24 @@
+EdgeResistance 250
+DeskTopSize 1x1
+Style * SloppyFocus, MouseFocusClickRaises
+
+DestroyFunc StartFunction
+AddToFunc StartFunction
++ I Exec exec xsetroot -solid "#2e3440"
+
+DestroyMenu RootMenu
+AddToMenu RootMenu "Root Menu" Title
++ "Terminal" Exec exec xfce4-terminal
++ "xterm" Exec exec xterm
++ "Chromium" Exec exec /usr/local/bin/chromium
++ "Files" Exec exec thunar
++ "" Nop
++ "Restart fvwm3" Restart
++ "Exit fvwm3" Quit
+
+Mouse 1 R A Menu RootMenu Nop
+Mouse 3 R A Menu RootMenu Nop
+
+Key Return A 4 Exec exec xfce4-terminal
+Key b A 4 Exec exec /usr/local/bin/chromium
+Key f A 4 Exec exec thunar

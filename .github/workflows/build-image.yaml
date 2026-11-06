@@ -1,0 +1,213 @@
+name: Build VNC/noVNC images
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - images/**
+      - container/**
+      - vnc_novnc/**
+
+  pull_request:
+    paths:
+      - images/**
+      - container/**
+      - vnc_novnc/**
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build_and_push_images:
+    name: Build and push ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Debian 12 fvwm3
+            dockerfile: images/debian-12/fvwm3/Dockerfile
+            cache_scope: debian-12-fvwm3
+            platforms: linux/amd64,linux/arm64
+            ci_tag: vnc-novnc-container:debian-12-fvwm3-ci
+            branch_tag_prefix: debian-12-
+            tag_prefix: ""
+            latest: "true"
+
+          - name: Debian 12 XFCE
+            dockerfile: images/debian-12/xfce/Dockerfile
+            cache_scope: debian-12-xfce
+            platforms: linux/amd64,linux/arm64
+            ci_tag: vnc-novnc-container:debian-12-xfce-ci
+            branch_tag_prefix: debian-12-xfce-
+            tag_prefix: debian-12-xfce-
+            latest: "false"
+
+          - name: Ubuntu 24.04 fvwm3
+            dockerfile: images/ubuntu-24.04/fvwm3/Dockerfile
+            cache_scope: ubuntu-24.04-fvwm3
+            platforms: linux/amd64
+            ci_tag: vnc-novnc-container:ubuntu-24.04-fvwm3-ci
+            branch_tag_prefix: ubuntu-24.04-fvwm3-
+            tag_prefix: ubuntu-24.04-fvwm3-
+            latest: "false"
+
+          - name: Ubuntu 24.04 XFCE
+            dockerfile: images/ubuntu-24.04/xfce/Dockerfile
+            cache_scope: ubuntu-24.04-xfce
+            platforms: linux/amd64
+            ci_tag: vnc-novnc-container:ubuntu-24.04-xfce-ci
+            branch_tag_prefix: ubuntu-24.04-xfce-
+            tag_prefix: ubuntu-24.04-xfce-
+            latest: "false"
+
+          - name: Ubuntu 24.04 XFCE Slurm
+            dockerfile: images/ubuntu-24.04/xfce-slurm/Dockerfile
+            cache_scope: ubuntu-24.04-xfce-slurm
+            platforms: linux/amd64
+            ci_tag: vnc-novnc-container:ubuntu-24.04-xfce-slurm-ci
+            branch_tag_prefix: ubuntu-24.04-xfce-slurm-
+            tag_prefix: ubuntu-24.04-xfce-slurm-
+            latest: "false"
+
+          - name: Ubuntu CUDA gpu-xfce
+            dockerfile: images/ubuntu/gpu-xfce/Dockerfile
+            cache_scope: ubuntu-gpu-xfce
+            platforms: linux/amd64
+            ci_tag: vnc-novnc-container:ubuntu-gpu-xfce-ci
+            branch_tag_prefix: ubuntu-gpu-xfce-
+            tag_prefix: ubuntu-gpu-xfce-
+            latest: "false"
+
+          - name: AlmaLinux 9 fvwm3
+            dockerfile: images/alma-9/fvwm3/Dockerfile
+            cache_scope: alma-9-fvwm3
+            platforms: linux/amd64
+            ci_tag: vnc-novnc-container:alma-9-fvwm3-ci
+            branch_tag_prefix: alma-9-fvwm3-
+            tag_prefix: alma-9-fvwm3-
+            latest: "false"
+
+          - name: AlmaLinux 9 XFCE
+            dockerfile: images/alma-9/xfce/Dockerfile
+            cache_scope: alma-9-xfce
+            platforms: linux/amd64
+            ci_tag: vnc-novnc-container:alma-9-xfce-ci
+            branch_tag_prefix: alma-9-xfce-
+            tag_prefix: alma-9-xfce-
+            latest: "false"
+
+          - name: openSUSE Leap 15.6 XFCE
+            dockerfile: images/opensuse-15.6/xfce/Dockerfile
+            cache_scope: opensuse-15.6-xfce
+            platforms: linux/amd64,linux/arm64
+            ci_tag: vnc-novnc-container:opensuse-15.6-xfce-ci
+            branch_tag_prefix: opensuse-15.6-
+            tag_prefix: opensuse-15.6-
+            latest: "false"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch,prefix=${{ matrix.branch_tag_prefix }}
+            type=raw,value=latest,enable=${{ matrix.latest }}
+            type=ref,event=tag,prefix=${{ matrix.tag_prefix }}
+
+      - name: Build image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./${{ matrix.dockerfile }}
+          push: false
+          load: true
+          tags: ${{ matrix.ci_tag }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.cache_scope }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.cache_scope }}
+
+      - name: Smoke test image
+        env:
+          IMAGE_TAG: ${{ matrix.ci_tag }}
+        run: |
+          docker run --rm --entrypoint /bin/sh "${IMAGE_TAG}" -lc '
+            set -eu
+            python3 -c "import vnc_novnc"
+            test -x /usr/local/bin/vnc-novnc-entrypoint
+            test -x /usr/local/bin/vnc-novnc-jupyter-kernel
+            test -x /usr/local/bin/sshproxy
+            command -v chromium
+            command -v curl
+            command -v dbus-launch
+            command -v dbus-run-session
+            command -v fc-match
+            command -v gcc
+            command -v gdb
+            command -v git
+            command -v ip
+            command -v make
+            command -v nmap
+            command -v showmount
+            command -v thunar
+            command -v tcpdump
+            command -v tshark
+            command -v vim
+            command -v vncpasswd
+            command -v vncserver
+            command -v websockify
+            command -v wget
+            test -n "${VNC_DESKTOP_CMD}"
+            command -v "${VNC_DESKTOP_CMD}"
+            test "$(getent passwd root | cut -d: -f7)" = "/bin/bash"
+            test "${SHELL}" = "/bin/bash"
+            test -s /etc/fonts/fonts.conf
+            fc-match sans
+            if command -v scli >/dev/null 2>&1; then
+              test -x /usr/local/bin/scli
+              for command in srun sbatch salloc scontrol sacct squeue scancel sinfo sshare sprio; do
+                test "$(readlink /usr/local/bin/${command})" = "/usr/local/bin/scli"
+              done
+            fi
+            test ! -e /opt/vnc-novnc
+          '
+
+      - name: Build and push multi-arch image
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./${{ matrix.dockerfile }}
+          platforms: ${{ matrix.platforms }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.cache_scope }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.cache_scope }}

@@ -1,0 +1,29 @@
+# Defaults used by the Jupyter kernelspec wrapper.
+# Values in strings are expanded from the host environment when the kernel starts.
+
+image: registry.nersc.gov/library/nersc/novnc:debian-12-main
+userns: keep-id
+keep_groups: true
+pull_policy: missing
+display_mode: default
+novnc_transport: unix
+novnc_socket:
+jupyter_proxy_service: vnc-novnc
+gpu: false
+slurm: false
+ssh_proxy: false
+
+volume:
+  - "/global:/global"
+  - "${SCRATCH}:${SCRATCH}:rw"
+  - "${CFS}:${CFS}:rw"
+  - "/opt:/opt"
+  - "/etc/cray-pe.d:/etc/cray-pe.d:ro"
+  - "/etc/clustername:/etc/clustername:ro"
+  - "/etc/environment:/etc/environment:ro"
+
+env:
+  - "HOME"
+  - "MODULEPATH"
+  - "MODULEPATH_ROOT"
+  - "MODULESHOME"

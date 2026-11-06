@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "$#" -eq 0 ]]; then
+    set -- python3 -m ipykernel_launcher
+fi
+
+/usr/local/bin/vnc-novnc-entrypoint start &
+vnc_pid="$!"
+kernel_pid=""
+ipython_dir=""
+
+cleanup() {
+    if [[ -n "${kernel_pid}" ]]; then
+        kill "${kernel_pid}" >/dev/null 2>&1 || true
+    fi
+    kill "${vnc_pid}" >/dev/null 2>&1 || true
+    wait "${vnc_pid}" >/dev/null 2>&1 || true
+    if [[ -n "${ipython_dir}" ]]; then
+        rm -rf "${ipython_dir}" >/dev/null 2>&1 || true
+    fi
+}
+trap cleanup EXIT INT TERM HUP
+
+sleep 2
+if ! kill -0 "${vnc_pid}" >/dev/null 2>&1; then
+    wait "${vnc_pid}"
+fi
+
+printf 'VNC/noVNC access URL: %s\n' "${VNC_NOVNC_ACCESS_URL:-}" >&2
+printf 'The noVNC access details will also display automatically after the first notebook cell runs.\n' >&2
+
+ipython_dir="$(mktemp -d)"
+mkdir -p "${ipython_dir}/profile_default/startup"
+cat > "${ipython_dir}/profile_default/startup/00-vnc-novnc.py" <<'PY'
+try:
+    from vnc_novnc.notebook import install_auto_display
+    install_auto_display()
+except Exception as exc:
+    print("Unable to install VNC/noVNC auto-display hook: {}".format(exc))
+PY
+export IPYTHONDIR="${ipython_dir}"
+
+"$@" &
+kernel_pid="$!"
+wait "${kernel_pid}"

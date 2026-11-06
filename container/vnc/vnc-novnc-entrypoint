@@ -1,0 +1,291 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${1:-start}" != "start" ]]; then
+    exec "$@"
+fi
+
+if [[ -r /etc/profile.d/zz-vnc-novnc-nersc-lmod.sh ]]; then
+    restore_nounset=0
+    case "$-" in
+        *u*) restore_nounset=1 ;;
+    esac
+    set +u
+    . /etc/profile.d/zz-vnc-novnc-nersc-lmod.sh || true
+    if [[ "${restore_nounset}" -eq 1 ]]; then
+        set -u
+    fi
+    unset restore_nounset
+fi
+
+normalize_bool() {
+    case "${1,,}" in
+        1|true|yes|y|on) printf 'yes' ;;
+        0|false|no|n|off) printf 'no' ;;
+        *) printf '%s' "$1" ;;
+    esac
+}
+
+append_words() {
+    local words="$1"
+    shift
+    local -n out="$1"
+    local extra=()
+
+    if [[ -n "$words" ]]; then
+        read -r -a extra <<< "$words"
+        out+=( "${extra[@]}" )
+    fi
+}
+
+vncserver_display_only() {
+    [[ -r /usr/lib/vncserver ]] && grep -q 'usage: .* <display>' /usr/lib/vncserver
+}
+
+write_display_only_vnc_config() {
+    local config_file="${vnc_dir}/config"
+    local tmp_config="${config_file}.tmp"
+
+    if [[ -f "${config_file}" ]]; then
+        grep -Eiv '^[[:space:]]*(geometry|depth|rfbport|localhost|securitytypes|rfbauth)[[:space:]]*=' \
+            "${config_file}" > "${tmp_config}" || true
+    else
+        : > "${tmp_config}"
+    fi
+
+    {
+        printf 'geometry=%s\n' "${VNC_GEOMETRY}"
+        printf 'depth=%s\n' "${VNC_DEPTH}"
+        printf 'rfbport=%s\n' "${vnc_port}"
+        printf 'localhost=%s\n' "${vnc_localhost}"
+        printf 'securitytypes=%s\n' "${security_types}"
+        if [[ "${security_types,,}" != "none" ]]; then
+            printf 'rfbauth=%s\n' "${VNC_PASSWORD_FILE}"
+        fi
+    } >> "${tmp_config}"
+
+    mv "${tmp_config}" "${config_file}"
+}
+
+display=":${VNC_DISPLAY}"
+vnc_port="${VNC_PORT}"
+novnc_vnc_port="${NOVNC_VNC_PORT:-$vnc_port}"
+vnc_localhost="$(normalize_bool "${VNC_LOCALHOST}")"
+
+ensure_writable_dir() {
+    local dir="$1"
+    mkdir -p "${dir}" >/dev/null 2>&1 && [[ -w "${dir}" ]]
+}
+
+runtime_home="${VNC_RUNTIME_HOME:-${HOME:-/root}}"
+if ! ensure_writable_dir "${runtime_home}"; then
+    runtime_home="/tmp/vnc-home-$(id -u)"
+    if ! ensure_writable_dir "${runtime_home}"; then
+        printf 'Unable to create writable VNC runtime home: %s\n' "${runtime_home}" >&2
+        exit 1
+    fi
+fi
+
+export HOME="${runtime_home}"
+vnc_dir="${HOME}/.vnc"
+fvwm_dir="${HOME}/.fvwm"
+mkdir -p "${vnc_dir}" "${fvwm_dir}"
+chmod 700 "${vnc_dir}"
+
+if [[ -n "${VNC_PASSWORD_PLAIN_FILE:-}" && "${VNC_PASSWORD_FILE}" == "/root/.vnc/passwd" ]]; then
+    VNC_PASSWORD_FILE="/tmp/vnc-auth/passwd"
+elif [[ "${VNC_PASSWORD_FILE}" == "/root/.vnc/passwd" && ! -w "/root" ]]; then
+    VNC_PASSWORD_FILE="${vnc_dir}/passwd"
+fi
+
+if [[ "${VNC_XSTARTUP}" == "/root/.vnc/xstartup" && ! -w "/root" ]]; then
+    VNC_XSTARTUP="${vnc_dir}/xstartup"
+fi
+
+if [[ ! -e "${fvwm_dir}/config" && -r /etc/vnc-novnc/fvwm3-config ]]; then
+    cp /etc/vnc-novnc/fvwm3-config "${fvwm_dir}/config"
+fi
+if [[ -w "${fvwm_dir}/config" ]]; then
+    sed -i 's#exec chrome#exec /usr/local/bin/chromium#g' "${fvwm_dir}/config"
+    sed -i 's#exec chromium#exec /usr/local/bin/chromium#g' "${fvwm_dir}/config"
+fi
+
+if [[ ! -x "${VNC_XSTARTUP}" ]]; then
+    cat > "${VNC_XSTARTUP}" <<'EOF'
+#!/bin/sh
+unset SESSION_MANAGER
+unset DBUS_SESSION_BUS_ADDRESS
+
+xsetroot -solid "#2e3440" >/dev/null 2>&1 || true
+
+if command -v xfce4-terminal >/dev/null 2>&1; then
+    xfce4-terminal >/dev/null 2>&1 &
+elif command -v xterm >/dev/null 2>&1; then
+    xterm >/dev/null 2>&1 &
+fi
+
+if command -v dbus-launch >/dev/null 2>&1; then
+    exec dbus-launch --exit-with-session sh -lc "${VNC_DESKTOP_CMD:-fvwm3}"
+fi
+
+exec sh -lc "${VNC_DESKTOP_CMD:-fvwm3}"
+EOF
+    chmod 0755 "${VNC_XSTARTUP}"
+fi
+
+security_types="${VNC_SECURITY_TYPES}"
+if [[ "${security_types,,}" != "none" ]]; then
+    if [[ -n "${VNC_PASSWORD_PLAIN_FILE:-}" || ! -s "${VNC_PASSWORD_FILE}" ]]; then
+        vnc_password="${VNC_PASSWORD:-}"
+        if [[ -n "${VNC_PASSWORD_PLAIN_FILE:-}" ]]; then
+            if [[ ! -r "${VNC_PASSWORD_PLAIN_FILE}" ]]; then
+                printf 'VNC_PASSWORD_PLAIN_FILE is set but not readable: %s\n' "${VNC_PASSWORD_PLAIN_FILE}" >&2
+                exit 1
+            fi
+            IFS= read -r vnc_password < "${VNC_PASSWORD_PLAIN_FILE}"
+        fi
+
+        if [[ -z "${vnc_password}" ]]; then
+            printf 'No VNC password provided and %s does not exist\n' "${VNC_PASSWORD_FILE}" >&2
+            exit 1
+        fi
+        mkdir -p "$(dirname "${VNC_PASSWORD_FILE}")"
+        printf '%s\n' "${vnc_password}" | vncpasswd -f > "${VNC_PASSWORD_FILE}"
+        chmod 0600 "${VNC_PASSWORD_FILE}"
+    fi
+fi
+
+if [[ -z "${VNC_PASSWORD_PLAIN_FILE:-}" && "${VNC_PASSWORD:-}" == "changeme" && "${security_types,,}" != "none" ]]; then
+    printf 'WARNING: using default VNC_PASSWORD=changeme; set VNC_PASSWORD or mount VNC_PASSWORD_FILE for real use.\n' >&2
+fi
+
+vncserver -kill "${display}" >/dev/null 2>&1 || true
+rm -f "/tmp/.X${VNC_DISPLAY}-lock" "/tmp/.X11-unix/X${VNC_DISPLAY}"
+
+vnc_args=(
+    "${display}"
+    -geometry "${VNC_GEOMETRY}"
+    -depth "${VNC_DEPTH}"
+    -rfbport "${vnc_port}"
+    -localhost "${vnc_localhost}"
+    -SecurityTypes "${security_types}"
+)
+
+if [[ "${security_types,,}" != "none" ]]; then
+    vnc_args+=( -PasswordFile "${VNC_PASSWORD_FILE}" )
+fi
+
+append_words "${VNC_EXTRA_ARGS}" vnc_args
+
+printf 'Starting VNC server on display %s, port %s, geometry %s, depth %s\n' \
+    "${display}" "${vnc_port}" "${VNC_GEOMETRY}" "${VNC_DEPTH}"
+if vncserver_display_only; then
+    write_display_only_vnc_config
+    vncserver "${display}" &
+    vncserver_pid="$!"
+else
+    vncserver "${vnc_args[@]}"
+fi
+
+cleanup() {
+    if [[ -n "${unix_proxy_pid:-}" ]]; then
+        kill "${unix_proxy_pid}" >/dev/null 2>&1 || true
+    fi
+    if [[ -n "${websockify_pid:-}" ]]; then
+        kill "${websockify_pid}" >/dev/null 2>&1 || true
+    fi
+    if [[ -n "${vncserver_pid:-}" ]]; then
+        kill "${vncserver_pid}" >/dev/null 2>&1 || true
+    fi
+    vncserver -kill "${display}" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT INT TERM
+
+novnc_args=( --web="${NOVNC_WEB}" )
+if [[ -n "${NOVNC_UNIX_SOCKET:-}" ]]; then
+    mkdir -p "$(dirname "${NOVNC_UNIX_SOCKET}")"
+    chmod 700 "$(dirname "${NOVNC_UNIX_SOCKET}")" >/dev/null 2>&1 || true
+    rm -f "${NOVNC_UNIX_SOCKET}"
+    novnc_args+=( "127.0.0.1:${NOVNC_PORT}" )
+else
+    novnc_args+=( "${NOVNC_LISTEN}:${NOVNC_PORT}" )
+fi
+novnc_args+=( "${NOVNC_VNC_HOST}:${novnc_vnc_port}" )
+append_words "${NOVNC_EXTRA_ARGS}" novnc_args
+
+if [[ -n "${NOVNC_UNIX_SOCKET:-}" ]]; then
+    printf 'Starting noVNC on Unix socket %s -> 127.0.0.1:%s -> %s:%s\n' \
+        "${NOVNC_UNIX_SOCKET}" "${NOVNC_PORT}" "${NOVNC_VNC_HOST}" "${novnc_vnc_port}"
+else
+    printf 'Starting noVNC on http://%s:%s/vnc.html -> %s:%s\n' \
+        "${NOVNC_LISTEN}" "${NOVNC_PORT}" "${NOVNC_VNC_HOST}" "${novnc_vnc_port}"
+fi
+websockify "${novnc_args[@]}" &
+websockify_pid="$!"
+
+if [[ -n "${NOVNC_UNIX_SOCKET:-}" ]]; then
+    python3 - "${NOVNC_UNIX_SOCKET}" "127.0.0.1" "${NOVNC_PORT}" <<'PY' &
+import os
+import socket
+import sys
+import threading
+
+listen_path, target_host, target_port = sys.argv[1], sys.argv[2], int(sys.argv[3])
+
+try:
+    os.unlink(listen_path)
+except FileNotFoundError:
+    pass
+
+listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+listener.bind(listen_path)
+os.chmod(listen_path, 0o600)
+listener.listen(128)
+
+def copy_stream(src, dst):
+    try:
+        while True:
+            data = src.recv(65536)
+            if not data:
+                break
+            dst.sendall(data)
+    except OSError:
+        pass
+    try:
+        dst.shutdown(socket.SHUT_WR)
+    except OSError:
+        pass
+
+def handle_client(client):
+    try:
+        upstream = socket.create_connection((target_host, target_port))
+    except OSError:
+        client.close()
+        return
+
+    threads = [
+        threading.Thread(target=copy_stream, args=(client, upstream), daemon=True),
+        threading.Thread(target=copy_stream, args=(upstream, client), daemon=True),
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    client.close()
+    upstream.close()
+
+try:
+    while True:
+        client, _ = listener.accept()
+        threading.Thread(target=handle_client, args=(client,), daemon=True).start()
+finally:
+    listener.close()
+    try:
+        os.unlink(listen_path)
+    except FileNotFoundError:
+        pass
+PY
+    unix_proxy_pid="$!"
+fi
+
+wait "${websockify_pid}"

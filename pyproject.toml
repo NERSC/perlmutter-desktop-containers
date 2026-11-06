@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vnc-novnc-runner"
+version = "0.1.0"
+description = "Helpers for running the VNC/noVNC desktop container with podman-hpc"
+requires-python = ">=3.6"
+dependencies = []
+
+[project.scripts]
+run-vnc-novnc = "vnc_novnc.runner:main"
+vnc-novnc-kernel-wrapper = "vnc_novnc.kernel:main"
+
+[tool.setuptools]
+packages = ["vnc_novnc"]
