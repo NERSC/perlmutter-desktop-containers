@@ -2,6 +2,30 @@
 
 This repository builds VNC/noVNC desktop containers for NERSC and provides
 helpers for running them directly or as Jupyter kernels with `podman-hpc`.
+The source is released under [BSD-3-Clause-LBNL](LICENSE).
+
+## Perlmutter scope and prerequisites (November 2026)
+
+This guide describes the Perlmutter and NERSC Jupyter environment as of
+**November 2026**. Perlmutter runs SLES 15 SP6; the recommended openSUSE Leap
+15.6 image is the closest variant here to that host environment. Start a
+Perlmutter JupyterLab server at <https://jupyter.nersc.gov> and use its terminal
+for the commands below. A login-node server is suitable for setup, desktop
+interaction, and light work. For GPU access or compute-intensive applications,
+start a Jupyter server on an allocated compute node.
+
+The examples use images in `registry.nersc.gov`. This is a private NERSC
+registry: `podman-hpc login registry.nersc.gov` requires registry access, which
+users can request through <https://help.nersc.gov>. The public source repository
+does not make those image tags public. The Slurm-enabled kernel installer also
+builds two host-side helpers from the bundled Go source, so `go` must be on
+`PATH` before installation. Use `module spider go` to find an available Go
+module if needed.
+
+Current NERSC references: [Perlmutter timeline](https://docs.nersc.gov/systems/perlmutter/timeline/),
+[Jupyter server choices](https://docs.nersc.gov/services/jupyter/reference/),
+[container registry access](https://docs.nersc.gov/development/containers/registry/),
+and [login-node policy](https://docs.nersc.gov/policies/resource-usage/).
 
 The default image is Debian 12 with fvwm3:
 
@@ -20,29 +44,29 @@ it.
 
 ## Quickstart: Jupyter Kernel
 
-1. Log in to <https://jupyter.nersc.gov>, start a Jupyter session, and open a
-   JupyterLab terminal.
+1. Log in to <https://jupyter.nersc.gov>, start a **Perlmutter** JupyterLab
+   server, and open a terminal. Choose a compute-node server for GPU work.
 
 2. Clone this repository in the terminal:
 
 ```sh
 cd "${HOME}"
-git clone https://gitlab.nersc.gov/nersc/dseg/vnc-novnc-container.git
+git clone https://github.com/nersc/vnc-novnc-container.git
 cd vnc-novnc-container
 ```
 
-3. Load the NERSC Python module, log in to the NERSC registry, and install the
-   recommended openSUSE Leap 15.6 XFCE Slurm kernelspec. This is the default
-   quickstart path because it matches Perlmutter more closely and enables Unix
-   noVNC, Slurm CLI proxy, SSH proxy, and GPU visibility in the generated
-   kernelspec.
-   `--prepull` makes the selected image available during installation so the
-   first kernel startup does not have to wait for an image pull. If a migrated
-   `podman-hpc` image is already present on Perlmutter scratch, the installer
-   reuses it instead of pulling again.
+3. Load the NERSC Python and Go modules, log in to the NERSC registry, and
+   install the recommended openSUSE Leap 15.6 XFCE Slurm kernelspec. This
+   variant enables Unix noVNC, the Slurm CLI and SSH proxies, and GPU
+   visibility in the generated kernelspec. `--prepull` makes the selected
+   image available during installation so the first kernel startup does not
+   have to wait for an image pull. If a migrated `podman-hpc` image is already
+   present on Perlmutter scratch, the installer reuses it instead of pulling
+   again.
 
 ```sh
 module load python
+module load go
 podman-hpc login registry.nersc.gov
 scripts/install-jupyter-kernel.sh opensuse15.6 xfce-slurm \
   --novnc-transport unix \
@@ -60,8 +84,10 @@ scripts/install-jupyter-kernel.sh opensuse15.6 xfce-slurm \
   --prepull-only
 ```
 
-4. Refresh JupyterLab if needed, then create a new notebook with the
-   `VNC-opensuse15.6-xfce-slurm` kernel.
+4. After the first Unix-mode install, stop and restart your JupyterLab server
+   so it loads the new named proxy service. Create a new notebook with the
+   `VNC-opensuse15.6-xfce-slurm` kernel. Refresh JupyterLab if the kernel
+   menu has not updated.
 
 The first notebook cell output shows the noVNC login URL and connection
 details. Unix-socket kernels still create a random VNC password internally, but
@@ -76,18 +102,17 @@ vnc_novnc.display_connection()
 ```
 
 Open the noVNC URL in the browser. If noVNC prompts for a VNC password, use the
-printed password; otherwise it can be ignored for Unix-socket kernels. Closing
-the notebook stops the noVNC container.
+printed password; otherwise it can be ignored for Unix-socket kernels. Stopping
+the kernel stops the noVNC container.
 
 The user workflow is:
 
 ```mermaid
 flowchart TD
-    login[Log in to jupyter.nersc.gov]
-    session[Start a Jupyter session]
+    login[Start a Perlmutter Jupyter server at jupyter.nersc.gov]
     terminal[Open a JupyterLab terminal]
     clone[One-time setup clone this repo]
-    registry[Log in to registry.nersc.gov]
+    registry[Load Python and Go; log in to registry.nersc.gov]
     install[Run install-jupyter-kernel.sh with prepull]
     notebook[Start a notebook with the new VNC kernel]
     firstcell[Run anything in the first cell]
@@ -96,12 +121,12 @@ flowchart TD
     password[Enter VNC password only if prompted]
     desktop[Use the noVNC desktop]
 
-    login --> session
-    session --> terminal
+    login --> terminal
     terminal --> clone
     clone --> registry
     registry --> install
-    install --> notebook
+    install --> restart[Restart JupyterLab server]
+    restart --> notebook
     notebook --> firstcell
     firstcell --> output
     output --> openurl
@@ -115,57 +140,38 @@ flowchart TD
 You can also run a desktop container directly from a terminal without installing
 or selecting a Jupyter kernel.
 
-1. In a JupyterLab terminal, clone the repo and choose an image:
+1. In a Perlmutter JupyterLab terminal, clone the public repo:
 
 ```sh
 cd "${HOME}"
-git clone https://github.com/dingp/vnc-novnc-container.git
+git clone https://github.com/nersc/vnc-novnc-container.git
 cd vnc-novnc-container
-
-IMAGE=registry.nersc.gov/library/nersc/novnc:opensuse15.6-xfce-slurm-unix
 ```
 
-Other published image tags are listed in the image variant table below.
+This path uses the default Debian 12 fvwm3 image. Other image tags are listed
+in the image variant table below.
 
-2. Load the NERSC Python module and run the helper:
+2. Load the NERSC Python module, log in to the registry, and run the helper:
 
 ```sh
 module load python
-PYTHONPATH="${PWD}" scripts/run-vnc-novnc.py \
-  --config scripts/run-vnc-novnc.yaml \
-  --image "${IMAGE}" \
-  --novnc-transport unix \
-  --gpu \
-  --slurm \
-  --ssh-proxy
+podman-hpc login registry.nersc.gov
+python3 -m vnc_novnc.runner \
+  --config scripts/run-vnc-novnc.yaml
 ```
 
-The helper pulls the image if needed, starts it with `podman-hpc`, prints a
-Jupyter Server Proxy noVNC URL, and prints a one-time VNC password. Open the URL
-and enter the password only if noVNC prompts for it.
+The helper pulls the image if needed, starts it with `podman-hpc`, and prints a
+Jupyter Server Proxy noVNC URL and a one-time VNC password. The manual runner
+uses a loopback host TCP port for noVNC by default; Jupyter Server Proxy
+forwards the browser to that port. Open the URL and enter the printed password.
 
 Example output:
 
 ```text
-Image: registry.nersc.gov/library/nersc/novnc:opensuse15.6-xfce-slurm-unix
-noVNC: https://jupyter.nersc.gov/user/your-user-name/perlmutter-login-node/vnc-novnc/vnc.html?port=443&host=jupyter.nersc.gov&path=user%2Fyour-user-name%2Fperlmutter-login-node%2Fvnc-novnc%2Fwebsockify
+Image: registry.nersc.gov/library/nersc/novnc:debian-12-main
+noVNC: https://jupyter.nersc.gov/user/your-user-name/your-server-name/proxy/49967/vnc.html?port=443&host=jupyter.nersc.gov&path=user%2Fyour-user-name%2Fyour-server-name%2Fproxy%2F49967%2Fwebsockify
 One-time VNC password: AbC123xY
-noVNC is exposed through a user-private Unix socket, not a host TCP port.
-```
-
-If you run the helper outside a Jupyter terminal, provide the Jupyter server name
-so it can still print a proxied URL:
-
-```sh
-module load python
-PYTHONPATH="${PWD}" scripts/run-vnc-novnc.py \
-  --config scripts/run-vnc-novnc.yaml \
-  --image "${IMAGE}" \
-  --novnc-transport unix \
-  --gpu \
-  --slurm \
-  --ssh-proxy \
-  --jupyter-proxy-server perlmutter-login-node
+VNC server port is not exposed on the host.
 ```
 
 Leave the command running while you use the desktop. Press `Ctrl-C` in the
@@ -230,7 +236,7 @@ sets `gpu: true` in the kernelspec YAML. For manual runs, pass `--gpu` to the
 Python runner:
 
 ```sh
-PYTHONPATH="${PWD}" scripts/run-vnc-novnc.py \
+python3 -m vnc_novnc.runner \
   --config scripts/run-vnc-novnc.yaml \
   --image registry.nersc.gov/library/nersc/novnc:ubuntu-gpu-xfce-main \
   --gpu
@@ -243,9 +249,9 @@ host-side `ssh-proxy-server`, which lets container shells use the host's SSH
 configuration and host-based authentication for destinations such as NERSC DTNs.
 The openSUSE Slurm variant also installs native GCC 7, 12, 13, and 14 packages
 to match Perlmutter host compiler module expectations more closely. The Slurm
-proxy code comes from the internal
-[`slurm-cli-proxy`](https://gitlab.nersc.gov/nersc/nersc-user-env/experimental/slurm-cli-proxy)
-project. Slurm-enabled kernelspecs set `gpu: true`, which adds `--gpu` to
+and SSH proxy source is included under
+[`container/slurm-cli-proxy`](container/slurm-cli-proxy). Slurm-enabled
+kernelspecs set `gpu: true`, which adds `--gpu` to
 `podman-hpc run` so host GPUs are visible in the container. This does not yet
 make the VNC display itself use GPU-accelerated OpenGL rendering; Xvnc uses Mesa
 software rendering today. VirtualGL/EGL integration for hardware-accelerated
@@ -330,7 +336,7 @@ flowchart TB
 ```
 
 ```sh
-PYTHONPATH="${PWD}" scripts/run-vnc-novnc.py \
+python3 -m vnc_novnc.runner \
   --config scripts/run-vnc-novnc.yaml \
   --image registry.nersc.gov/library/nersc/novnc:opensuse15.6-xfce-slurm-unix \
   --novnc-transport unix \
@@ -352,13 +358,17 @@ PYTHONPATH="${PWD}" scripts/run-vnc-novnc.py \
 The preferred runner is the Python helper:
 
 ```sh
-scripts/run-vnc-novnc.py --config scripts/run-vnc-novnc.yaml
+python3 -m vnc_novnc.runner --config scripts/run-vnc-novnc.yaml
 ```
 
+Run module commands in this guide from the repository root. This lets Python
+import the checkout without setting `PYTHONPATH` for the `podman-hpc`
+subprocess.
+
 It starts the image with `podman-hpc`, generates a one-time VNC password, stores
-the password in a temporary `0600` file, publishes only the noVNC port by
-default, and prints the noVNC URL. It also generates a Jupyter Server Proxy URL
-when it can determine the Jupyter user/server prefix.
+the password in a temporary `0600` file, binds the noVNC host port to
+`127.0.0.1` by default, and prints the noVNC URL. It also generates a Jupyter
+Server Proxy URL when it can determine the Jupyter user/server prefix.
 
 The legacy shell helper is still available for the default image:
 
@@ -374,7 +384,7 @@ Example output:
 
 ```text
 Image: registry.nersc.gov/library/nersc/novnc:debian-12-main
-noVNC: https://jupyter.nersc.gov/user/your-user-name/muller-login-node-base/proxy/49967/vnc.html?port=443&host=jupyter.nersc.gov&path=user%2Fyour-user-name%2Fmuller-login-node-base%2Fproxy%2F49967%2Fwebsockify
+noVNC: https://jupyter.nersc.gov/user/your-user-name/your-server-name/proxy/49967/vnc.html?port=443&host=jupyter.nersc.gov&path=user%2Fyour-user-name%2Fyour-server-name%2Fproxy%2F49967%2Fwebsockify
 One-time VNC password: AbC123xY
 VNC server port is not exposed on the host.
 ```
@@ -523,60 +533,65 @@ flowchart LR
 For example, if the service prefix is:
 
 ```text
-/user/your-user-name/muller-login-node-base/
+/user/your-user-name/your-server-name/
 ```
 
 and the named proxy service is `vnc-novnc`, the printed URL is:
 
 ```text
-https://jupyter.nersc.gov/user/your-user-name/muller-login-node-base/vnc-novnc/vnc.html?port=443&host=jupyter.nersc.gov&path=user%2Fyour-user-name%2Fmuller-login-node-base%2Fvnc-novnc%2Fwebsockify
+https://jupyter.nersc.gov/user/your-user-name/your-server-name/vnc-novnc/vnc.html?port=443&host=jupyter.nersc.gov&path=user%2Fyour-user-name%2Fyour-server-name%2Fvnc-novnc%2Fwebsockify
 ```
 
-If the helper is not running inside Jupyter, provide the server path explicitly:
+The server name is the segment of your live JupyterLab URL after
+`/user/<username>/`; it is not a fixed Perlmutter hostname. If the helper is
+not running in a JupyterLab terminal, run it on the same node as that server
+and supply its name:
 
 ```sh
-scripts/run-vnc-novnc.py --jupyter-proxy-server perlmutter-login-node
+python3 -m vnc_novnc.runner --jupyter-proxy-server your-server-name
 ```
 
 ## Runner Examples
 
+The examples below show individual options; add
+`--config scripts/run-vnc-novnc.yaml` when you want the NERSC mounts and
+environment settings from the included configuration.
+
 Use a fixed noVNC host port:
 
 ```sh
-scripts/run-vnc-novnc.py --host-novnc-port 49967
+python3 -m vnc_novnc.runner --host-novnc-port 49967
 ```
 
-Use the secure Unix-socket noVNC transport:
+After installing a Unix-mode kernel and restarting JupyterLab so its named
+proxy service is loaded, the manual runner can also use Unix-socket transport:
 
 ```sh
-scripts/run-vnc-novnc.py --novnc-transport unix
+python3 -m vnc_novnc.runner --novnc-transport unix
 ```
 
 Use another published variant:
 
 ```sh
-scripts/run-vnc-novnc.py --image registry.nersc.gov/library/nersc/novnc:opensuse-15.6-main
-scripts/run-vnc-novnc.py --image registry.nersc.gov/library/nersc/novnc:ubuntu-24.04-xfce-main
-scripts/run-vnc-novnc.py --image registry.nersc.gov/library/nersc/novnc:ubuntu24.04-xfce-slurm --slurm
-scripts/run-vnc-novnc.py --image registry.nersc.gov/library/nersc/novnc:alma-9-xfce-main
+python3 -m vnc_novnc.runner --image registry.nersc.gov/library/nersc/novnc:opensuse-15.6-main
+python3 -m vnc_novnc.runner --image registry.nersc.gov/library/nersc/novnc:ubuntu-24.04-xfce-main
+python3 -m vnc_novnc.runner --image registry.nersc.gov/library/nersc/novnc:ubuntu24.04-xfce-slurm --slurm
+python3 -m vnc_novnc.runner --image registry.nersc.gov/library/nersc/novnc:alma-9-xfce-main
 ```
 
-Run outside Jupyter but still print a Jupyter proxy URL:
-
-```sh
-scripts/run-vnc-novnc.py --jupyter-proxy-server muller-login-node-base
-```
+The `--slurm` example requires the host-side `scli-server` binary created by
+the Slurm-enabled kernel installer.
 
 Expose the raw VNC server port in addition to noVNC:
 
 ```sh
-scripts/run-vnc-novnc.py --expose-vnc
+python3 -m vnc_novnc.runner --expose-vnc
 ```
 
 Mount host directories into the container:
 
 ```sh
-scripts/run-vnc-novnc.py \
+python3 -m vnc_novnc.runner \
   -v "${HOME}:${HOME}:rw" \
   -v "${SCRATCH}:${SCRATCH}:rw"
 ```
@@ -584,7 +599,7 @@ scripts/run-vnc-novnc.py \
 Pass extra `podman-hpc run` arguments:
 
 ```sh
-scripts/run-vnc-novnc.py -- --ipc=host
+python3 -m vnc_novnc.runner -- --ipc=host
 ```
 
 ## Jupyter Kernel
