@@ -1,0 +1,43 @@
+name: Build host proxy servers
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - .github/workflows/build-host-proxy-servers.yaml
+      - container/slurm-cli-proxy/**
+      - scripts/install-jupyter-kernel.sh
+
+  pull_request:
+    paths:
+      - .github/workflows/build-host-proxy-servers.yaml
+      - container/slurm-cli-proxy/**
+      - scripts/install-jupyter-kernel.sh
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Linux host binaries
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.23'
+          cache-dependency-path: container/slurm-cli-proxy/go.sum
+
+      - name: Build host proxy servers
+        working-directory: container/slurm-cli-proxy
+        run: |
+          go build -buildvcs=false -o "${RUNNER_TEMP}/scli-server" ./cmd/scli-server
+          go build -buildvcs=false -o "${RUNNER_TEMP}/ssh-proxy-server" ./cmd/ssh-proxy-server
+          test -x "${RUNNER_TEMP}/scli-server"
+          test -x "${RUNNER_TEMP}/ssh-proxy-server"

@@ -4,12 +4,14 @@ on:
   push:
     branches: [ main ]
     paths:
+      - .github/workflows/build-image.yaml
       - images/**
       - container/**
       - vnc_novnc/**
 
   pull_request:
     paths:
+      - .github/workflows/build-image.yaml
       - images/**
       - container/**
       - vnc_novnc/**
@@ -114,6 +116,15 @@ jobs:
             tag_prefix: opensuse-15.6-
             latest: "false"
 
+          - name: openSUSE Leap 15.6 XFCE Slurm
+            dockerfile: images/opensuse-15.6/xfce-slurm/Dockerfile
+            cache_scope: opensuse-15.6-xfce-slurm
+            platforms: linux/amd64
+            ci_tag: vnc-novnc-container:opensuse-15.6-xfce-slurm-ci
+            branch_tag_prefix: opensuse-15.6-xfce-slurm-
+            tag_prefix: opensuse-15.6-xfce-slurm-
+            latest: "false"
+
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -192,6 +203,8 @@ jobs:
             fc-match sans
             if command -v scli >/dev/null 2>&1; then
               test -x /usr/local/bin/scli
+              test -x /usr/local/bin/ssh-proxy
+              test "$(readlink /usr/local/bin/ssh)" = "/usr/local/bin/ssh-proxy"
               for command in srun sbatch salloc scontrol sacct squeue scancel sinfo sshare sprio; do
                 test "$(readlink /usr/local/bin/${command})" = "/usr/local/bin/scli"
               done
