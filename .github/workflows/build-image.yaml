@@ -4,14 +4,20 @@ on:
   push:
     branches: [ main ]
     paths:
+      - .github/workflows/build-image.yaml
       - images/**
       - container/**
+      - kernels/**
+      - scripts/install-jupyter-kernel.sh
       - vnc_novnc/**
 
   pull_request:
     paths:
+      - .github/workflows/build-image.yaml
       - images/**
       - container/**
+      - kernels/**
+      - scripts/install-jupyter-kernel.sh
       - vnc_novnc/**
 
   workflow_dispatch:
@@ -25,6 +31,28 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  build_host_proxy_servers:
+    name: Build host Unix socket proxy servers
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.23'
+          cache-dependency-path: container/slurm-cli-proxy/go.sum
+
+      - name: Build host proxy binaries
+        working-directory: container/slurm-cli-proxy
+        run: |
+          go build -buildvcs=false -o "${RUNNER_TEMP}/scli-server" ./cmd/scli-server
+          go build -buildvcs=false -o "${RUNNER_TEMP}/ssh-proxy-server" ./cmd/ssh-proxy-server
+          test -x "${RUNNER_TEMP}/scli-server"
+          test -x "${RUNNER_TEMP}/ssh-proxy-server"
+
   build_and_push_images:
     name: Build and push ${{ matrix.name }}
     runs-on: ubuntu-24.04
@@ -114,6 +142,15 @@ jobs:
             tag_prefix: opensuse-15.6-
             latest: "false"
 
+          - name: openSUSE Leap 15.6 XFCE Slurm
+            dockerfile: images/opensuse-15.6/xfce-slurm/Dockerfile
+            cache_scope: opensuse-15.6-xfce-slurm
+            platforms: linux/amd64
+            ci_tag: vnc-novnc-container:opensuse-15.6-xfce-slurm-ci
+            branch_tag_prefix: opensuse-15.6-xfce-slurm-
+            tag_prefix: opensuse-15.6-xfce-slurm-
+            latest: "false"
+
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -192,6 +229,8 @@ jobs:
             fc-match sans
             if command -v scli >/dev/null 2>&1; then
               test -x /usr/local/bin/scli
+              test -x /usr/local/bin/ssh-proxy
+              test "$(readlink /usr/local/bin/ssh)" = "/usr/local/bin/ssh-proxy"
               for command in srun sbatch salloc scontrol sacct squeue scancel sinfo sshare sprio; do
                 test "$(readlink /usr/local/bin/${command})" = "/usr/local/bin/scli"
               done
