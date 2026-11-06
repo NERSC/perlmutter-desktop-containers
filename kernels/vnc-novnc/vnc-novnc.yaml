@@ -1,7 +1,7 @@
 # Defaults used by the Jupyter kernelspec wrapper.
 # Values in strings are expanded from the host environment when the kernel starts.
 
-image: registry.nersc.gov/library/nersc/novnc:debian-12-main
+image: ghcr.io/nersc/perlmutter-desktop-containers:debian-12-main
 userns: keep-id
 keep_groups: true
 pull_policy: missing
