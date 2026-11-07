@@ -75,7 +75,7 @@ jobs:
           (cd "${RUNNER_TEMP}/package-check" && sha256sum -c SHA256SUMS)
 
       - name: Log in to GHCR
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         uses: docker/login-action@v4
         with:
           registry: ghcr.io
@@ -83,7 +83,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish host proxy package
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         run: |
           image=ghcr.io/nersc/perlmutter-desktop-containers
           docker tag host-proxies:test "${image}:host-proxies-linux-amd64"
