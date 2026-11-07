@@ -17,25 +17,25 @@ import (
 
 	"github.com/creack/pty"
 
-	"slurm-cli-proxy/internal/common"
-	"slurm-cli-proxy/internal/protocol"
+	"github.com/nersc/perlmutter-desktop-containers/host-proxies/protocol"
+	"github.com/nersc/perlmutter-desktop-containers/host-proxies/socketpath"
 )
 
 func main() {
 	log.SetFlags(0)
 
 	socket := flag.String("socket", "", "Unix socket path (default from env)")
+	sshPath := flag.String("ssh-path", "ssh", "Host ssh executable")
 	verbose := flag.Bool("verbose", false, "Print request and exit logs")
-	allow := flag.String("allow", "srun,sbatch,salloc,squeue,scancel,scancel,scontrol,sacct,sinfo,sshare,sprio", "Comma-separated allowed command names")
 	flag.Parse()
 
 	sock, err := resolveSocket(*socket)
 	if err != nil {
 		log.Fatalf("socket path: %v", err)
 	}
-	if socketAlreadyExists(sock) && common.SocketAcceptsConnection(sock) {
+	if socketAlreadyExists(sock) && socketpath.SocketAcceptsConnection(sock) {
 		if *verbose {
-			log.Printf("scli-server socket already exists, not starting: %s", sock)
+			log.Printf("ssh-proxy-server socket already exists, not starting: %s", sock)
 		}
 		return
 	}
@@ -48,10 +48,8 @@ func main() {
 	}
 	defer ln.Close()
 	if *verbose {
-		log.Printf("scli-server listening on %s", sock)
+		log.Printf("ssh-proxy-server listening on %s", sock)
 	}
-
-	allowed := buildAllowed(*allow)
 
 	for {
 		conn, err := ln.Accept()
@@ -61,7 +59,7 @@ func main() {
 			}
 			continue
 		}
-		go handleConn(conn, allowed, *verbose)
+		go handleConn(conn, *sshPath, *verbose)
 	}
 }
 
@@ -69,11 +67,11 @@ func resolveSocket(cli string) (string, error) {
 	if cli != "" {
 		return cli, nil
 	}
-	return common.DefaultSocketPath()
+	return socketpath.DefaultSSHProxySocketPath()
 }
 
 func setupListenerPath(sock string) error {
-	if err := common.EnsureSocketDir(sock); err != nil {
+	if err := socketpath.EnsureSocketDir(sock); err != nil {
 		return err
 	}
 	_ = os.Remove(sock)
@@ -88,18 +86,7 @@ func socketAlreadyExists(sock string) bool {
 	return info.Mode()&os.ModeSocket != 0
 }
 
-func buildAllowed(csv string) map[string]bool {
-	m := make(map[string]bool)
-	for _, p := range strings.Split(csv, ",") {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			m[p] = true
-		}
-	}
-	return m
-}
-
-func handleConn(c net.Conn, allowed map[string]bool, verbose bool) {
+func handleConn(c net.Conn, sshPath string, verbose bool) {
 	defer c.Close()
 	r := bufio.NewReader(c)
 	w := bufio.NewWriter(c)
@@ -110,83 +97,62 @@ func handleConn(c net.Conn, allowed map[string]bool, verbose bool) {
 		_ = sw.WriteFrame(protocol.FrameERROR, []byte(err.Error()))
 		return
 	}
-
-	base := filepath.Base(h.Cmd)
-	if !allowed[base] {
-		_ = sw.WriteFrame(protocol.FrameERROR, []byte(fmt.Sprintf("command not allowed: %s", base)))
+	if filepath.Base(h.Cmd) != "ssh" {
+		_ = sw.WriteFrame(protocol.FrameERROR, []byte(fmt.Sprintf("command not allowed: %s", h.Cmd)))
 		return
 	}
 
-	path, err := exec.LookPath(h.Cmd)
+	path, err := exec.LookPath(sshPath)
 	if err != nil {
-		_ = sw.WriteFrame(protocol.FrameERROR, []byte(fmt.Sprintf("command not found: %s", h.Cmd)))
+		_ = sw.WriteFrame(protocol.FrameERROR, []byte(fmt.Sprintf("ssh not found: %s", sshPath)))
 		return
 	}
 
-	// Build command
 	var cmd *exec.Cmd
 	usePTY := h.TTY
-	if h.TTY && (base == "srun" || base == "salloc") {
-		// Prefer running via user shell when TTY requested
-		shell := os.Getenv("SHELL")
-		if shell == "" {
-			shell = "/bin/bash"
-		}
+	if h.TTY {
 		line := shellQuote(path, h.Args)
-		// If we are in TTY mode for srun/salloc, use 'script' wrapper to allocate a PTY
-		// without requiring this process to own a PTY. This avoids EPERM on setuid exec.
 		cmd = exec.Command("script", "-qfec", line, "/dev/null")
-		usePTY = false // script internally allocates a pty; we use pipes
+		usePTY = false
 		if verbose {
 			log.Printf("exec via script: %s -qfec %q /dev/null (cwd=%s)", "script", line, h.Cwd)
 		}
-	} else if h.TTY {
-		// TTY mode for non-slurm commands: run directly
-		shell := os.Getenv("SHELL")
-		if shell == "" {
-			shell = "/bin/bash"
-		}
-		line := shellQuote(path, h.Args)
-		cmd = exec.Command(shell, "-lc", line)
-		if verbose {
-			log.Printf("exec tty: %s -lc %q (cwd=%s)", shell, line, h.Cwd)
-		}
 	} else {
 		cmd = exec.Command(path, h.Args...)
-		if verbose {
-			log.Printf("exec: %s %s (cwd=%s)", path, strings.Join(h.Args, " "), h.Cwd)
-		}
 	}
-
-	cmd.Env = h.Env
-	if h.Cwd != "" {
+	cmd.Env = sshEnv(os.Environ(), h.Env)
+	if h.Cwd != "" && pathExists(h.Cwd) {
 		cmd.Dir = h.Cwd
 	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
+	if verbose {
+		mode := "pipes"
+		if usePTY {
+			mode = "pty"
+		}
+		log.Printf("exec %s: %s %s (cwd=%s)", mode, path, strings.Join(h.Args, " "), cmd.Dir)
+	}
+
 	var (
-		stdin   io.WriteCloser
-		stdout  io.ReadCloser
-		stderr  io.ReadCloser
-		ptyFile *os.File
+		stdin  io.WriteCloser
+		stdout io.ReadCloser
+		stderr io.ReadCloser
+		ptmx   *os.File
 	)
 
 	if usePTY {
-		if verbose {
-			log.Printf("starting PTY child")
-		}
-		ptyFile, err = pty.Start(cmd)
+		ptmx, err = pty.Start(cmd)
 		if err != nil {
 			_ = sw.WriteFrame(protocol.FrameERROR, []byte(fmt.Sprintf("start tty: %v", err)))
 			return
 		}
-		defer ptyFile.Close()
+		defer ptmx.Close()
 		if h.Cols > 0 && h.Rows > 0 {
-			_ = pty.Setsize(ptyFile, &pty.Winsize{Cols: uint16(h.Cols), Rows: uint16(h.Rows)})
+			_ = pty.Setsize(ptmx, &pty.Winsize{Cols: uint16(h.Cols), Rows: uint16(h.Rows)})
 		}
-		stdin = ptyFile
-		stdout = ptyFile
-		stderr = nil // merged into pty
+		stdin = ptmx
+		stdout = ptmx
 	} else {
 		stdin, err = cmd.StdinPipe()
 		if err != nil {
@@ -203,54 +169,39 @@ func handleConn(c net.Conn, allowed map[string]bool, verbose bool) {
 			_ = sw.WriteFrame(protocol.FrameERROR, []byte(fmt.Sprintf("stderr pipe: %v", err)))
 			return
 		}
-		if verbose {
-			log.Printf("starting child with pipes")
-		}
 		if err := cmd.Start(); err != nil {
 			_ = sw.WriteFrame(protocol.FrameERROR, []byte(fmt.Sprintf("start: %v", err)))
 			return
 		}
 	}
 
-	// Copy child stdout/stderr to frames
-	doneCopy := make(chan struct{}, 2)
-	if stdout != nil {
-		go func() {
-			buf := make([]byte, 32*1024)
-			for {
-				n, err := stdout.Read(buf)
-				if n > 0 {
-					_ = sw.WriteFrame(protocol.FrameSTDOUT, buf[:n])
-				}
-				if err != nil {
-					break
-				}
+	var copyWG sync.WaitGroup
+	copyOutput := func(t protocol.FrameType, reader io.Reader) {
+		defer copyWG.Done()
+		buf := make([]byte, 32*1024)
+		for {
+			n, err := reader.Read(buf)
+			if n > 0 {
+				_ = sw.WriteFrame(t, buf[:n])
 			}
-			doneCopy <- struct{}{}
-		}()
+			if err != nil {
+				return
+			}
+		}
+	}
+	if stdout != nil {
+		copyWG.Add(1)
+		go copyOutput(protocol.FrameSTDOUT, stdout)
 	}
 	if stderr != nil {
-		go func() {
-			buf := make([]byte, 32*1024)
-			for {
-				n, err := stderr.Read(buf)
-				if n > 0 {
-					_ = sw.WriteFrame(protocol.FrameSTDERR, buf[:n])
-				}
-				if err != nil {
-					break
-				}
-			}
-			doneCopy <- struct{}{}
-		}()
+		copyWG.Add(1)
+		go copyOutput(protocol.FrameSTDERR, stderr)
 	}
 
-	// Read frames from client and forward to child
 	go func() {
 		for {
 			t, payload, err := protocol.ReadFrame(r)
 			if err != nil {
-				// client closed; close child stdin
 				if stdin != nil {
 					_ = stdin.Close()
 				}
@@ -264,31 +215,83 @@ func handleConn(c net.Conn, allowed map[string]bool, verbose bool) {
 			case protocol.FrameSIGNAL:
 				var sp protocol.SignalPayload
 				_ = json.Unmarshal(payload, &sp)
-				pgid, _ := syscall.Getpgid(cmd.Process.Pid)
-				_ = syscall.Kill(-pgid, syscall.Signal(sp.Signal))
+				if cmd.Process != nil {
+					pgid, _ := syscall.Getpgid(cmd.Process.Pid)
+					_ = syscall.Kill(-pgid, syscall.Signal(sp.Signal))
+				}
 			case protocol.FrameRESIZE:
-				if ptyFile != nil {
+				if ptmx != nil {
 					var rp protocol.ResizePayload
 					if err := json.Unmarshal(payload, &rp); err == nil {
-						_ = pty.Setsize(ptyFile, &pty.Winsize{Cols: uint16(rp.Cols), Rows: uint16(rp.Rows)})
+						_ = pty.Setsize(ptmx, &pty.Winsize{Cols: uint16(rp.Cols), Rows: uint16(rp.Rows)})
 					}
 				}
 			}
 		}
 	}()
 
-	// Wait for command to exit
 	err = cmd.Wait()
 	code, signaled := extractExit(err)
+	if stdin != nil {
+		_ = stdin.Close()
+	}
+	if ptmx != nil {
+		_ = ptmx.Close()
+	}
+	copyWG.Wait()
 	_ = sw.WriteFrame(protocol.FrameEXIT, mustJSON(protocol.ExitPayload{Code: code, Signaled: signaled}))
 	if verbose {
 		log.Printf("exit: code=%d signaled=%v for %s %s", code, signaled, path, strings.Join(h.Args, " "))
 	}
-	// ensure copy goroutines can exit
-	if stdin != nil {
-		_ = stdin.Close()
+}
+
+func sshEnv(hostEnv, clientEnv []string) []string {
+	merged := append([]string{}, hostEnv...)
+	hostIndex := make(map[string]int)
+	for index, item := range merged {
+		name := strings.SplitN(item, "=", 2)[0]
+		hostIndex[name] = index
 	}
-	<-doneCopy
+	for _, item := range clientEnv {
+		name, _, _ := strings.Cut(item, "=")
+		if !clientSSHEnvAllowed(name) {
+			continue
+		}
+		if index, ok := hostIndex[name]; ok {
+			merged[index] = item
+		} else {
+			hostIndex[name] = len(merged)
+			merged = append(merged, item)
+		}
+	}
+	return merged
+}
+
+func clientSSHEnvAllowed(name string) bool {
+	return name == "TERM" || name == "COLORTERM" || name == "LANG" || strings.HasPrefix(name, "LC_")
+}
+
+func pathExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// shellQuote returns a single command line string with safe POSIX single-quote escaping.
+func shellQuote(cmdPath string, args []string) string {
+	var b strings.Builder
+	b.WriteString(posixQuote(cmdPath))
+	for _, arg := range args {
+		b.WriteByte(' ')
+		b.WriteString(posixQuote(arg))
+	}
+	return b.String()
+}
+
+func posixQuote(s string) string {
+	if s == "" {
+		return "''"
+	}
+	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
 
 type safeWriter struct {
@@ -323,23 +326,4 @@ func extractExit(err error) (int, bool) {
 func mustJSON(v any) []byte {
 	b, _ := json.Marshal(v)
 	return b
-}
-
-// shellQuote returns a single command line string with safe POSIX single-quote escaping.
-func shellQuote(cmdPath string, args []string) string {
-	var b strings.Builder
-	b.WriteString(posixQuote(cmdPath))
-	for _, a := range args {
-		b.WriteByte(' ')
-		b.WriteString(posixQuote(a))
-	}
-	return b.String()
-}
-
-func posixQuote(s string) string {
-	if s == "" {
-		return "''"
-	}
-	// Replace ' with '\'' sequence
-	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }

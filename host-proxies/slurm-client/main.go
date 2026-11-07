@@ -16,53 +16,64 @@ import (
 
 	"golang.org/x/term"
 
-	"slurm-cli-proxy/internal/common"
-	"slurm-cli-proxy/internal/protocol"
+	"github.com/nersc/perlmutter-desktop-containers/host-proxies/protocol"
+	"github.com/nersc/perlmutter-desktop-containers/host-proxies/socketpath"
 )
 
 func main() {
 	log.SetFlags(0)
 
 	invoked := filepath.Base(os.Args[0])
-	if invoked == "ssh" {
-		runSSH(os.Args[1:], "", autoTTY(os.Args[1:]))
+	if invoked != "scli" {
+		// Transparent mode: behave like the invoked Slurm command name
+		transparent(invoked, os.Args[1:])
 		return
 	}
 
 	socket := flag.String("socket", "", "Unix socket path (default from env)")
-	ttyMode := flag.String("tty", "auto", "TTY mode: auto, always, never")
+	tty := flag.Bool("tty", false, "Request TTY if possible")
+	cols := flag.Int("cols", 0, "TTY columns")
+	rows := flag.Int("rows", 0, "TTY rows")
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: ssh-proxy [flags] [ssh args...]\n")
+		fmt.Fprintf(os.Stderr, "Usage: scli [flags] <cmd> [args...]\n")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
 
-	wantTTY := autoTTY(flag.Args())
-	switch *ttyMode {
-	case "always":
-		wantTTY = true
-	case "never":
-		wantTTY = false
-	case "auto":
-	default:
-		log.Fatalf("invalid --tty value: %s", *ttyMode)
+	if flag.NArg() < 1 {
+		flag.Usage()
+		os.Exit(2)
 	}
 
-	runSSH(flag.Args(), *socket, wantTTY)
-}
-
-func runSSH(args []string, socket string, wantTTY bool) {
-	sock := socket
+	sock := *socket
 	if sock == "" {
 		var err error
-		sock, err = common.DefaultSSHProxySocketPath()
+		sock, err = socketpath.DefaultSocketPath()
 		if err != nil {
 			log.Fatalf("socket path: %v", err)
 		}
 	}
 
 	runClient(sock, protocol.Handshake{
-		Cmd:  "ssh",
+		Cmd:  flag.Arg(0),
+		Args: flag.Args()[1:],
+		Env:  os.Environ(),
+		Cwd:  mustGetwd(),
+		TTY:  *tty,
+		Cols: *cols,
+		Rows: *rows,
+	}, *tty)
+}
+
+func transparent(cmdName string, args []string) {
+	sock, err := socketpath.DefaultSocketPath()
+	if err != nil {
+		log.Fatalf("socket path: %v", err)
+	}
+	// auto-enable TTY when invoked as salloc (interactive) or when --pty is present
+	wantTTY := (cmdName == "salloc" || hasPtyFlag(args)) && term.IsTerminal(int(os.Stdin.Fd()))
+	runClient(sock, protocol.Handshake{
+		Cmd:  cmdName,
 		Args: args,
 		Env:  os.Environ(),
 		Cwd:  mustGetwd(),
@@ -70,33 +81,10 @@ func runSSH(args []string, socket string, wantTTY bool) {
 	}, wantTTY)
 }
 
-func autoTTY(args []string) bool {
-	if !term.IsTerminal(int(os.Stdin.Fd())) {
-		return false
-	}
-	for _, arg := range args {
-		if arg == "-T" {
-			return false
-		}
-		if arg == "-t" || arg == "-tt" {
-			return true
-		}
-		if strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--") {
-			if strings.Contains(arg[1:], "T") {
-				return false
-			}
-			if strings.Contains(arg[1:], "t") {
-				return true
-			}
-		}
-	}
-	return true
-}
-
 func runClient(sock string, h protocol.Handshake, ttyRequested bool) {
 	conn, err := net.Dial("unix", sock)
 	if err != nil {
-		log.Fatalf("connect to ssh-proxy-server at %s: %v", sock, err)
+		log.Fatalf("connect to server at %s: %v", sock, err)
 	}
 	defer conn.Close()
 
@@ -104,38 +92,41 @@ func runClient(sock string, h protocol.Handshake, ttyRequested bool) {
 	stdout := os.Stdout
 	stderr := os.Stderr
 
-	var oldState *term.State
+	oldState := (*term.State)(nil)
 	if ttyRequested && term.IsTerminal(int(stdin.Fd())) {
 		st, err := term.MakeRaw(int(stdin.Fd()))
 		if err == nil {
 			oldState = st
 			if h.Cols == 0 || h.Rows == 0 {
-				cols, rows, _ := term.GetSize(int(stdin.Fd()))
-				h.Cols = cols
-				h.Rows = rows
+				w, he, _ := term.GetSize(int(stdin.Fd()))
+				if h.Cols == 0 {
+					h.Cols = w
+				}
+				if h.Rows == 0 {
+					h.Rows = he
+				}
 			}
 		}
 	}
-	defer func() {
-		if oldState != nil {
-			_ = term.Restore(int(stdin.Fd()), oldState)
-		}
-	}()
 
+	// Send handshake
 	if err := protocol.WriteHandshake(conn, h); err != nil {
 		log.Fatalf("handshake: %v", err)
 	}
 
 	br := bufio.NewReader(conn)
 	bw := bufio.NewWriter(conn)
-	exitCh := make(chan int, 1)
 
+	// Goroutine: read server frames and write to local stdio
+	done := make(chan struct{})
+	exitCh := make(chan int, 1)
 	go func() {
+		defer close(done)
 		for {
 			t, payload, err := protocol.ReadFrame(br)
 			if err != nil {
 				if !isEOF(err) {
-					fmt.Fprintf(stderr, "ssh-proxy: read error: %v\n", err)
+					fmt.Fprintf(stderr, "scli: read error: %v\n", err)
 				}
 				select {
 				case exitCh <- 1:
@@ -150,7 +141,7 @@ func runClient(sock string, h protocol.Handshake, ttyRequested bool) {
 				_, _ = stderr.Write(payload)
 			case protocol.FrameEXIT:
 				var ep protocol.ExitPayload
-				_ = json.Unmarshal(payload, &ep)
+				_ = jsonUnmarshal(payload, &ep)
 				select {
 				case exitCh <- ep.Code:
 				default:
@@ -158,7 +149,7 @@ func runClient(sock string, h protocol.Handshake, ttyRequested bool) {
 				return
 			case protocol.FrameERROR:
 				msg := strings.TrimSpace(string(payload))
-				fmt.Fprintf(stderr, "ssh-proxy: server error: %s\n", msg)
+				fmt.Fprintf(stderr, "scli: server error: %s\n", msg)
 				select {
 				case exitCh <- 1:
 				default:
@@ -168,6 +159,7 @@ func runClient(sock string, h protocol.Handshake, ttyRequested bool) {
 		}
 	}()
 
+	// Forward stdin to server
 	go func() {
 		buf := make([]byte, 32*1024)
 		for {
@@ -182,6 +174,7 @@ func runClient(sock string, h protocol.Handshake, ttyRequested bool) {
 		}
 	}()
 
+	// Forward signals
 	sigc := make(chan os.Signal, 8)
 	signal.Notify(sigc, syscall.SIGINT, syscall.SIGTERM, syscall.SIGWINCH)
 	go func() {
@@ -200,9 +193,22 @@ func runClient(sock string, h protocol.Handshake, ttyRequested bool) {
 	code := <-exitCh
 	if oldState != nil {
 		_ = term.Restore(int(stdin.Fd()), oldState)
-		oldState = nil
 	}
+	<-done
 	os.Exit(code)
+}
+
+func hasPtyFlag(args []string) bool {
+	for _, a := range args {
+		if a == "--pty" || a == "-pty" {
+			return true
+		}
+	}
+	return false
+}
+
+func jsonUnmarshal(b []byte, v any) error {
+	return json.Unmarshal(b, v)
 }
 
 func mustJSON(v any) []byte {

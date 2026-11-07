@@ -25,8 +25,8 @@ in the [image variant table](images.md#image-variants).
 
 ```sh
 module load python
-python3 -m vnc_novnc.runner \
-  --config scripts/run-vnc-novnc.yaml \
+python3 scripts/run-vnc-novnc.py \
+  --config config/perlmutter-runner.yaml \
   --image registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:debian-12-main
 ```
 
@@ -60,8 +60,8 @@ scripts/install-jupyter-kernel.sh --jupyter-proxy-only
 # Restart JupyterLab before running the next command.
 cd "${HOME}/perlmutter-desktop-containers"
 module load python
-python3 -m vnc_novnc.runner \
-  --config scripts/run-vnc-novnc.yaml \
+python3 scripts/run-vnc-novnc.py \
+  --config config/perlmutter-runner.yaml \
   --image registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:debian-12-main \
   --novnc-transport unix
 ```
@@ -71,8 +71,8 @@ python3 -m vnc_novnc.runner \
 The preferred runner is the Python helper:
 
 ```sh
-python3 -m vnc_novnc.runner \
-  --config scripts/run-vnc-novnc.yaml \
+python3 scripts/run-vnc-novnc.py \
+  --config config/perlmutter-runner.yaml \
   --image registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:debian-12-main
 ```
 
@@ -109,7 +109,7 @@ Open the printed noVNC URL and enter the printed one-time VNC password.
 
 ## Runner Configuration
 
-The included `scripts/run-vnc-novnc.yaml` uses `--userns=keep-id`,
+The included `config/perlmutter-runner.yaml` uses `--userns=keep-id`,
 `--group-add=keep-groups`, and bind mounts the NERSC global filesystem,
 `$SCRATCH`, `$CFS`, `/opt`, the host Cray PE config, the host cluster name,
 and the host `/etc/environment`. Environment variables in YAML strings are
@@ -211,13 +211,13 @@ tries to pull and use a missing image in one step.
 ## Runner Examples
 
 The examples below show individual options; add
-`--config scripts/run-vnc-novnc.yaml` when you want the NERSC mounts and
+`--config config/perlmutter-runner.yaml` when you want the NERSC mounts and
 environment settings from the included configuration.
 
 Use a fixed noVNC host port:
 
 ```sh
-python3 -m vnc_novnc.runner --host-novnc-port 49967
+python3 scripts/run-vnc-novnc.py --host-novnc-port 49967
 ```
 
 After running `scripts/install-jupyter-kernel.sh --jupyter-proxy-only` or
@@ -225,7 +225,7 @@ installing a Unix-mode kernel, restart JupyterLab so its named proxy service
 is loaded. A bare runner invocation can then use Unix-socket transport:
 
 ```sh
-python3 -m vnc_novnc.runner \
+python3 scripts/run-vnc-novnc.py \
   --image registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:debian-12-main \
   --novnc-transport unix
 ```
@@ -233,10 +233,10 @@ python3 -m vnc_novnc.runner \
 Use another published variant:
 
 ```sh
-python3 -m vnc_novnc.runner --image registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:opensuse-15.6-main
-python3 -m vnc_novnc.runner --image registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:ubuntu-24.04-xfce-main
-python3 -m vnc_novnc.runner --image registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:ubuntu24.04-xfce-slurm --slurm
-python3 -m vnc_novnc.runner --image registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:alma-9-xfce-main
+python3 scripts/run-vnc-novnc.py --image registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:opensuse-15.6-main
+python3 scripts/run-vnc-novnc.py --image registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:ubuntu-24.04-xfce-main
+python3 scripts/run-vnc-novnc.py --image registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:ubuntu24.04-xfce-slurm --slurm
+python3 scripts/run-vnc-novnc.py --image registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:alma-9-xfce-main
 ```
 
 The `--slurm` example requires the host-side `scli-server` binary installed by
@@ -245,7 +245,7 @@ the Slurm-enabled kernel installer.
 Expose the raw VNC server port in addition to noVNC:
 
 ```sh
-python3 -m vnc_novnc.runner \
+python3 scripts/run-vnc-novnc.py \
   --image registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:debian-12-main \
   --expose-vnc
 ```
@@ -253,7 +253,7 @@ python3 -m vnc_novnc.runner \
 Mount host directories into the container:
 
 ```sh
-python3 -m vnc_novnc.runner \
+python3 scripts/run-vnc-novnc.py \
   -v "${HOME}:${HOME}:rw" \
   -v "${SCRATCH}:${SCRATCH}:rw"
 ```
@@ -261,7 +261,7 @@ python3 -m vnc_novnc.runner \
 Pass extra `podman-hpc run` arguments:
 
 ```sh
-python3 -m vnc_novnc.runner -- --ipc=host
+python3 scripts/run-vnc-novnc.py -- --ipc=host
 ```
 
 See [image variants](images.md) for available tags and [Jupyter kernels](jupyter.md) for the notebook workflow.

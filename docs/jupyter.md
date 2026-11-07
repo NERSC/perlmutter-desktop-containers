@@ -163,7 +163,7 @@ not running in a JupyterLab terminal, run it on the same node as that server
 and supply its name:
 
 ```sh
-python3 -m vnc_novnc.runner --jupyter-proxy-server your-server-name
+python3 scripts/run-vnc-novnc.py --jupyter-proxy-server your-server-name
 ```
 
 ## Jupyter Kernel
@@ -178,7 +178,7 @@ This installs the Python package in editable mode for the current user and
 copies the selected kernelspec into:
 
 ```text
-${HOME}/.local/share/jupyter/kernels/vnc-novnc-DISTRO-DESKTOP
+${HOME}/.local/share/jupyter/jupyter/kernelspec-DISTRO-DESKTOP
 ```
 
 With Unix noVNC transport, this uses the
@@ -302,7 +302,7 @@ import vnc_novnc
 vnc_novnc.display_connection()
 ```
 
-The sample kernel config is `kernels/vnc-novnc/vnc-novnc.yaml`:
+The sample kernel config is `jupyter/kernelspec/vnc-novnc.yaml`:
 
 ```yaml
 image: registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:opensuse15.6-xfce-slurm-unix

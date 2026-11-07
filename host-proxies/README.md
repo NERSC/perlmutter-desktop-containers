@@ -1,4 +1,21 @@
-# SSH Proxy Design
+# Host proxies
+
+The four commands here let desktop containers use the host's native Slurm and
+SSH clients over user-private Unix sockets:
+
+| Source directory | Built command | Runs in |
+| --- | --- | --- |
+| `slurm-client/` | `scli` | Container |
+| `slurm-server/` | `scli-server` | Perlmutter host |
+| `ssh-client/` | `ssh-proxy` | Container |
+| `ssh-server/` | `ssh-proxy-server` | Perlmutter host |
+
+`protocol/` defines the framed request and I/O protocol. `socketpath/` resolves
+the user-scoped socket paths. The host binaries are packaged with
+`host-binaries.Dockerfile`. See the [host proxy guide](../docs/proxies.md) for
+installation and use.
+
+## SSH proxy design
 
 The SSH proxy lets a container invoke the host's SSH client over a Unix socket.
 This is useful on NERSC systems where host-based SSH authentication, host SSH
@@ -7,9 +24,9 @@ directly reproducible inside the container.
 
 The implementation has two commands:
 
-* `cmd/ssh-proxy`: container-side client. It is also installed as `ssh`, so
+* `ssh-client/`: container-side client. It is also installed as `ssh`, so
   normal commands such as `ssh dtn01.nersc.gov` use the proxy path.
-* `cmd/ssh-proxy-server`: host-side server. It listens on a user-scoped Unix
+* `ssh-server/`: host-side server. It listens on a user-scoped Unix
   socket and launches the real host `ssh` executable.
 
 ## Flow
@@ -67,7 +84,7 @@ contains the command name, SSH arguments, selected environment variables,
 current working directory, TTY request, and terminal size.
 
 The frame protocol is shared with the Slurm CLI proxy in
-`internal/protocol/protocol.go`:
+`protocol/protocol.go`:
 
 * `STDIN`: container input sent to the host process
 * `STDOUT`: host process output sent back to the container

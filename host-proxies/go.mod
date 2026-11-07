@@ -1,4 +1,4 @@
-module slurm-cli-proxy
+module github.com/nersc/perlmutter-desktop-containers/host-proxies
 
 go 1.19
 

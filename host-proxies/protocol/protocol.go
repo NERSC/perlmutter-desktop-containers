@@ -12,24 +12,24 @@ import (
 type FrameType byte
 
 const (
-	FrameSTDIN   FrameType = 1
-	FrameSTDOUT  FrameType = 2
-	FrameSTDERR  FrameType = 3
-	FrameSIGNAL  FrameType = 4
-	FrameRESIZE  FrameType = 5
-	FrameEXIT    FrameType = 6
-	FrameERROR   FrameType = 7
+	FrameSTDIN  FrameType = 1
+	FrameSTDOUT FrameType = 2
+	FrameSTDERR FrameType = 3
+	FrameSIGNAL FrameType = 4
+	FrameRESIZE FrameType = 5
+	FrameEXIT   FrameType = 6
+	FrameERROR  FrameType = 7
 )
 
 // Handshake is sent by the client as a single JSON line before streaming frames.
 type Handshake struct {
-	Cmd   string   `json:"cmd"`
-	Args  []string `json:"args"`
-	Env   []string `json:"env"`
-	Cwd   string   `json:"cwd"`
-	TTY   bool     `json:"tty"`
-	Cols  int      `json:"cols"`
-	Rows  int      `json:"rows"`
+	Cmd  string   `json:"cmd"`
+	Args []string `json:"args"`
+	Env  []string `json:"env"`
+	Cwd  string   `json:"cwd"`
+	TTY  bool     `json:"tty"`
+	Cols int      `json:"cols"`
+	Rows int      `json:"rows"`
 }
 
 // ExitPayload communicates the exit status.
@@ -123,5 +123,3 @@ func bytesTrimRightNewline(b []byte) []byte {
 	}
 	return b
 }
-
-
