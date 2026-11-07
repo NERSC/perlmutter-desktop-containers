@@ -44,6 +44,8 @@ Options:
   --jupyter-proxy-service NAME
                           Named Jupyter Server Proxy service for Unix mode.
                           Default: vnc-novnc.
+  --jupyter-proxy-only    Configure the named Unix-socket proxy service only.
+                          Restart JupyterLab before running a manual container.
   --slurm                 Enable scli socket setup in the generated kernelspec.
                           Automatically enabled for slurm-cli image variants.
   --no-slurm              Disable scli socket setup in the generated kernelspec.
@@ -202,6 +204,7 @@ force=0
 all_variants=0
 prepull=0
 prepull_only=0
+jupyter_proxy_only=0
 podman_hpc="${PODMAN_HPC:-podman-hpc}"
 kernel_name_set=0
 display_name_set=0
@@ -271,6 +274,10 @@ while [[ "$#" -gt 0 ]]; do
         --jupyter-proxy-service)
             jupyter_proxy_service="${2:?--jupyter-proxy-service requires a value}"
             shift 2
+            ;;
+        --jupyter-proxy-only)
+            jupyter_proxy_only=1
+            shift
             ;;
         --slurm)
             slurm_override=1
@@ -389,9 +396,14 @@ case "${jupyter_proxy_service}" in
         ;;
 esac
 
+if [[ "${jupyter_proxy_only}" -eq 1 && "${novnc_transport}" != "unix" ]]; then
+    printf '%s\n' '--jupyter-proxy-only requires Unix noVNC transport.' >&2
+    exit 2
+fi
+
 kernel_src="${repo_dir}/kernels/vnc-novnc"
 
-if [[ ! -f "${kernel_src}/kernel.json" ]]; then
+if [[ "${jupyter_proxy_only}" -ne 1 && ! -f "${kernel_src}/kernel.json" ]]; then
     printf 'Missing sample kernelspec: %s\n' "${kernel_src}/kernel.json" >&2
     exit 1
 fi
@@ -403,7 +415,7 @@ if [[ "${all_variants}" -eq 1 ]]; then
     fi
 fi
 
-if [[ "${pip_install}" -eq 1 && "${prepull_only}" -ne 1 ]]; then
+if [[ "${pip_install}" -eq 1 && "${prepull_only}" -ne 1 && "${jupyter_proxy_only}" -ne 1 ]]; then
     "${install_python}" -m pip install --user -e "${repo_dir}"
 fi
 
@@ -613,6 +625,11 @@ PY
     printf 'Installed Jupyter Server Proxy config: %s\n' "${jupyter_config}"
     printf 'Restart the Jupyter session once for the noVNC Unix socket service to be loaded.\n'
 }
+
+if [[ "${jupyter_proxy_only}" -eq 1 ]]; then
+    install_jupyter_proxy_config
+    exit 0
+fi
 
 install_one() {
     local install_distro="$1"
