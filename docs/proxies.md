@@ -10,7 +10,7 @@ configuration and host-based authentication for destinations such as NERSC DTNs.
 The openSUSE Slurm variant also installs native GCC 7, 12, 13, and 14 packages
 to match Perlmutter host compiler module expectations more closely. The Slurm
 and SSH proxy source is included under
-[`container/slurm-cli-proxy`](../container/slurm-cli-proxy). Slurm-enabled
+[`host-proxies`](../host-proxies). Slurm-enabled
 kernelspecs set `gpu: true`, which adds `--gpu` to
 `podman-hpc run` so host GPUs are visible in the container. This does not yet
 make the VNC display itself use GPU-accelerated OpenGL rendering; Xvnc uses Mesa
@@ -97,8 +97,8 @@ flowchart TB
 ```
 
 ```sh
-python3 -m vnc_novnc.runner \
-  --config scripts/run-vnc-novnc.yaml \
+python3 scripts/run-vnc-novnc.py \
+  --config config/perlmutter-runner.yaml \
   --image registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:opensuse15.6-xfce-slurm-unix \
   --novnc-transport unix \
   --gpu \

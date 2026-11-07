@@ -87,9 +87,9 @@ RUN \
     zypper --non-interactive clean --all && \
     rm -rf /tmp/sshproxy.tar.gz /var/cache/zypp/*
 
-COPY container/vnc/vnc-novnc-entrypoint /usr/local/bin/vnc-novnc-entrypoint
-COPY container/kernel/vnc-novnc-jupyter-kernel /usr/local/bin/vnc-novnc-jupyter-kernel
-COPY vnc_novnc /usr/local/lib/vnc-novnc/vnc_novnc
+COPY images/common/vnc-novnc-entrypoint /usr/local/bin/vnc-novnc-entrypoint
+COPY images/common/vnc-novnc-jupyter-kernel /usr/local/bin/vnc-novnc-jupyter-kernel
+COPY src/vnc_novnc /usr/local/lib/vnc-novnc/vnc_novnc
 
 RUN \
     chmod 0755 /usr/local/bin/vnc-novnc-entrypoint /usr/local/bin/vnc-novnc-jupyter-kernel && \

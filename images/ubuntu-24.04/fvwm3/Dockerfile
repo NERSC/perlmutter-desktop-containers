@@ -97,11 +97,11 @@ RUN \
     rm -f /etc/apt/sources.list.d/debian-bookworm.list /etc/apt/preferences.d/debian-chromium && \
     rm -rf /var/lib/apt/lists/* /tmp/sshproxy.tar.gz
 
-COPY container/vnc/vnc-novnc-entrypoint /usr/local/bin/vnc-novnc-entrypoint
-COPY container/kernel/vnc-novnc-jupyter-kernel /usr/local/bin/vnc-novnc-jupyter-kernel
-COPY container/vnc/fvwm3-config /etc/vnc-novnc/fvwm3-config
-COPY container/vnc/fvwm3-config /root/.fvwm/config
-COPY vnc_novnc /usr/local/lib/vnc-novnc/vnc_novnc
+COPY images/common/vnc-novnc-entrypoint /usr/local/bin/vnc-novnc-entrypoint
+COPY images/common/vnc-novnc-jupyter-kernel /usr/local/bin/vnc-novnc-jupyter-kernel
+COPY images/common/fvwm3-config /etc/vnc-novnc/fvwm3-config
+COPY images/common/fvwm3-config /root/.fvwm/config
+COPY src/vnc_novnc /usr/local/lib/vnc-novnc/vnc_novnc
 
 RUN \
     chmod 0755 /usr/local/bin/vnc-novnc-entrypoint /usr/local/bin/vnc-novnc-jupyter-kernel && \

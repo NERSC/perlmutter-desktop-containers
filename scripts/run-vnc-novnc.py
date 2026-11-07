@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Compatibility wrapper for the packaged VNC/noVNC runner."""
+"""Run the checkout's VNC/noVNC Python package without installing it."""
+
+from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from vnc_novnc.runner import main
 

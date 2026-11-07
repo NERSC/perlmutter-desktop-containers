@@ -14,4 +14,5 @@ run-vnc-novnc = "vnc_novnc.runner:main"
 vnc-novnc-kernel-wrapper = "vnc_novnc.kernel:main"
 
 [tool.setuptools]
+package-dir = {"" = "src"}
 packages = ["vnc_novnc"]

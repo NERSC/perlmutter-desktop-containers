@@ -10,8 +10,8 @@ Each image variant lives under:
 images/<base-os>/<desktop>/Dockerfile
 ```
 
-The build context is the repository root so variants can reuse shared files
-from `container/` and `vnc_novnc/`.
+The build context is the repository root so variants can reuse shared image
+files from `images/common/` and Python code from `src/vnc_novnc/`.
 
 | Variant | Dockerfile | Cached pull reference |
 | --- | --- | --- |
@@ -20,7 +20,7 @@ from `container/` and `vnc_novnc/`.
 | Ubuntu 24.04 + fvwm3 | `images/ubuntu-24.04/fvwm3/Dockerfile` | `registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:ubuntu-24.04-fvwm3-main` |
 | Ubuntu 24.04 + XFCE | `images/ubuntu-24.04/xfce/Dockerfile` | `registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:ubuntu-24.04-xfce-main` |
 | Ubuntu 24.04 + XFCE + Slurm CLI proxy | `images/ubuntu-24.04/xfce-slurm/Dockerfile` | `registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:ubuntu24.04-xfce-slurm` |
-| Ubuntu CUDA + GPU XFCE | `images/ubuntu/gpu-xfce/Dockerfile` | `registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:ubuntu-gpu-xfce-main` |
+| Ubuntu CUDA + GPU XFCE | `images/ubuntu-cuda/xfce/Dockerfile` | `registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:ubuntu-gpu-xfce-main` |
 | AlmaLinux 9 + fvwm3 | `images/alma-9/fvwm3/Dockerfile` | `registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:alma-9-fvwm3-main` |
 | AlmaLinux 9 + XFCE | `images/alma-9/xfce/Dockerfile` | `registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:alma-9-xfce-main` |
 | openSUSE Leap 15.6 + XFCE | `images/opensuse-15.6/xfce/Dockerfile` | `registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:opensuse-15.6-main` |
@@ -51,7 +51,7 @@ podman-hpc build -f images/debian-12/xfce/Dockerfile -t localhost/perlmutter-des
 podman-hpc build -f images/ubuntu-24.04/fvwm3/Dockerfile -t localhost/perlmutter-desktop-containers:ubuntu-24.04-fvwm3-main .
 podman-hpc build -f images/ubuntu-24.04/xfce/Dockerfile -t localhost/perlmutter-desktop-containers:ubuntu-24.04-xfce-main .
 podman-hpc build -f images/ubuntu-24.04/xfce-slurm/Dockerfile -t localhost/perlmutter-desktop-containers:ubuntu24.04-xfce-slurm .
-podman-hpc build -f images/ubuntu/gpu-xfce/Dockerfile -t localhost/perlmutter-desktop-containers:ubuntu-gpu-xfce-main .
+podman-hpc build -f images/ubuntu-cuda/xfce/Dockerfile -t localhost/perlmutter-desktop-containers:ubuntu-gpu-xfce-main .
 podman-hpc build -f images/alma-9/fvwm3/Dockerfile -t localhost/perlmutter-desktop-containers:alma-9-fvwm3-main .
 podman-hpc build -f images/alma-9/xfce/Dockerfile -t localhost/perlmutter-desktop-containers:alma-9-xfce-main .
 podman-hpc build -f images/opensuse-15.6/xfce/Dockerfile -t localhost/perlmutter-desktop-containers:opensuse-15.6-main .
@@ -64,8 +64,8 @@ sets `gpu: true` in the kernelspec YAML. For manual runs, pass `--gpu` to the
 Python runner:
 
 ```sh
-python3 -m vnc_novnc.runner \
-  --config scripts/run-vnc-novnc.yaml \
+python3 scripts/run-vnc-novnc.py \
+  --config config/perlmutter-runner.yaml \
   --image registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:ubuntu-gpu-xfce-main \
   --gpu
 ```
@@ -73,10 +73,12 @@ python3 -m vnc_novnc.runner \
 ## Repository Layout
 
 - `images/<base-os>/<desktop>/Dockerfile`: image variants.
-- `container/`: shared entrypoints and desktop config.
-- `vnc_novnc/`: host and in-container Python helpers.
-- `kernels/`: sample Jupyter kernelspec.
-- `scripts/`: install and run helpers.
+- `images/common/`: shared container entrypoints and desktop config.
+- `src/vnc_novnc/`: host and in-container Python helpers.
+- `jupyter/kernelspec/`: Jupyter kernelspec template.
+- `host-proxies/`: Slurm and SSH client and server Go code.
+- `config/`: example runner configuration.
+- `scripts/`: install and run commands.
 
 ## Desktop Notes
 
@@ -91,10 +93,10 @@ It adds `--no-sandbox` automatically when running as root.
 ## Add A New Variant
 
 1. Create `images/<base-os>/<desktop>/Dockerfile`.
-2. Reuse the shared entrypoints from `container/`.
-3. Copy `vnc_novnc` into `/usr/local/lib/vnc-novnc/vnc_novnc`.
+2. Reuse the shared entrypoints from `images/common/`.
+3. Copy `src/vnc_novnc` into `/usr/local/lib/vnc-novnc/vnc_novnc`.
 4. Set `PYTHONPATH=/usr/local/lib/vnc-novnc`.
-5. Add a matrix entry in `.github/workflows/build-image.yaml`.
+5. Add a matrix entry in `.github/image-matrix.json`.
 6. Add the variant to `scripts/install-jupyter-kernel.sh`.
 7. Update the image variant table above with the new published tag.
 

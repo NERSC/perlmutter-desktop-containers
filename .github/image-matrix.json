@@ -42,7 +42,7 @@
     },
     {
       "name": "Ubuntu CUDA gpu-xfce",
-      "dockerfile": "images/ubuntu/gpu-xfce/Dockerfile",
+      "dockerfile": "images/ubuntu-cuda/xfce/Dockerfile",
       "cache_scope": "ubuntu-gpu-xfce",
       "platforms": "linux/amd64",
       "ci_tag": "vnc-novnc-container:ubuntu-gpu-xfce-ci",
