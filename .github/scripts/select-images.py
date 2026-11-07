@@ -18,8 +18,8 @@ SHARED_FILES = {
     ".github/workflows/build-image.yaml",
     ".github/image-matrix.json",
     ".github/scripts/select-images.py",
-    "container/vnc/vnc-novnc-entrypoint",
-    "container/kernel/vnc-novnc-jupyter-kernel",
+    "images/common/vnc-novnc-entrypoint",
+    "images/common/vnc-novnc-jupyter-kernel",
 }
 
 
@@ -59,24 +59,25 @@ def changed_files() -> set[str] | None:
 def affects_image(path: str, image: dict) -> bool:
     dockerfile = image["dockerfile"]
     image_dir = dockerfile.rsplit("/", 1)[0] + "/"
-    if path in SHARED_FILES or path.startswith("vnc_novnc/"):
+    if path in SHARED_FILES or path.startswith("src/vnc_novnc/"):
         return True
     if path.startswith(image_dir):
         return True
-    if path == "container/vnc/fvwm3-config" and "/fvwm3/" in dockerfile:
+    if path == "images/common/fvwm3-config" and "/fvwm3/" in dockerfile:
         return True
     # Only the Slurm clients are compiled into the desktop images. The two
     # host server commands and their package Dockerfile have a separate job.
     slurm_source = path in {
-        "container/slurm-cli-proxy/go.mod",
-        "container/slurm-cli-proxy/go.sum",
+        "host-proxies/go.mod",
+        "host-proxies/go.sum",
     } or (
         path.endswith(".go")
         and path.startswith(
             (
-                "container/slurm-cli-proxy/cmd/scli/",
-                "container/slurm-cli-proxy/cmd/ssh-proxy/",
-                "container/slurm-cli-proxy/internal/",
+                "host-proxies/slurm-client/",
+                "host-proxies/ssh-client/",
+                "host-proxies/protocol/",
+                "host-proxies/socketpath/",
             )
         )
     )

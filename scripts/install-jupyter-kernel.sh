@@ -401,7 +401,7 @@ if [[ "${jupyter_proxy_only}" -eq 1 && "${novnc_transport}" != "unix" ]]; then
     exit 2
 fi
 
-kernel_src="${repo_dir}/kernels/vnc-novnc"
+kernel_src="${repo_dir}/jupyter/kernelspec"
 
 if [[ "${jupyter_proxy_only}" -ne 1 && ! -f "${kernel_src}/kernel.json" ]]; then
     printf 'Missing sample kernelspec: %s\n' "${kernel_src}/kernel.json" >&2
@@ -1025,7 +1025,7 @@ vnc_novnc_start_ssh_proxy_server
     if source_wrapper == "1":
         handle.write(
             "export PYTHONPATH={}:\"${{PYTHONPATH:-}}\"\n".format(
-                shlex.quote(repo_dir)
+                shlex.quote(repo_dir + "/src")
             )
         )
     handle.write(

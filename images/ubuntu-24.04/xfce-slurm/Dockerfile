@@ -4,18 +4,19 @@ ARG TARGETOS=linux
 ARG TARGETARCH
 
 WORKDIR /src
-COPY container/slurm-cli-proxy/go.mod container/slurm-cli-proxy/go.sum ./
+COPY host-proxies/go.mod host-proxies/go.sum ./
 RUN go mod download
-COPY container/slurm-cli-proxy/cmd/scli/ ./cmd/scli/
-COPY container/slurm-cli-proxy/cmd/ssh-proxy/ ./cmd/ssh-proxy/
-COPY container/slurm-cli-proxy/internal/ ./internal/
+COPY host-proxies/slurm-client/ ./slurm-client/
+COPY host-proxies/ssh-client/ ./ssh-client/
+COPY host-proxies/protocol/ ./protocol/
+COPY host-proxies/socketpath/ ./socketpath/
 RUN \
     set -eu; \
     arch="${TARGETARCH:-amd64}"; \
     GOOS="${TARGETOS}" GOARCH="${arch}" CGO_ENABLED=0 \
-        go build -trimpath -ldflags="-s -w" -o /out/scli ./cmd/scli; \
+        go build -trimpath -ldflags="-s -w" -o /out/scli ./slurm-client; \
     GOOS="${TARGETOS}" GOARCH="${arch}" CGO_ENABLED=0 \
-        go build -trimpath -ldflags="-s -w" -o /out/ssh-proxy ./cmd/ssh-proxy
+        go build -trimpath -ldflags="-s -w" -o /out/ssh-proxy ./ssh-client
 
 FROM ubuntu:24.04
 
@@ -170,9 +171,9 @@ RUN \
         > /etc/profile.d/00-vnc-novnc-environment.sh && \
     sed -i '1i[ -r /etc/profile.d/00-vnc-novnc-environment.sh ] && . /etc/profile.d/00-vnc-novnc-environment.sh' /etc/bash.bashrc
 
-COPY container/vnc/vnc-novnc-entrypoint /usr/local/bin/vnc-novnc-entrypoint
-COPY container/kernel/vnc-novnc-jupyter-kernel /usr/local/bin/vnc-novnc-jupyter-kernel
-COPY vnc_novnc /usr/local/lib/vnc-novnc/vnc_novnc
+COPY images/common/vnc-novnc-entrypoint /usr/local/bin/vnc-novnc-entrypoint
+COPY images/common/vnc-novnc-jupyter-kernel /usr/local/bin/vnc-novnc-jupyter-kernel
+COPY src/vnc_novnc /usr/local/lib/vnc-novnc/vnc_novnc
 COPY --from=slurm-cli-builder /out/scli /usr/local/bin/scli
 COPY --from=slurm-cli-builder /out/ssh-proxy /usr/local/bin/ssh-proxy
 
