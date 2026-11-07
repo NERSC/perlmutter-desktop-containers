@@ -9,19 +9,21 @@ Install the VNC/noVNC podman-hpc Jupyter kernelspec for the current user.
 
 DISTRO and DESKTOP select which published image tag the installed kernel uses.
 They may also be passed with --distro and --desktop.
+Image pulls prefer the NERSC Registry cache and retry GHCR directly if it fails.
+With no variant arguments, install the Perlmutter openSUSE XFCE Slurm kernel.
 
 Options:
   --distro DISTRO         Image distro. Values: debian12, ubuntu24.04, ubuntu,
                           alma9, opensuse15.6. Dash aliases such as
                           debian-12 and opensuse-15.6 are also accepted.
-                          Default: debian12
+                          When only DESKTOP is given: debian12
   --desktop DESKTOP       Desktop environment. Values depend on distro:
                           debian12: fvwm3, xfce
                           ubuntu24.04: fvwm3, xfce, xfce-slurm
                           ubuntu: gpu-xfce
                           alma9: fvwm3, xfce
                           opensuse15.6: xfce, xfce-slurm
-                          Default: fvwm3
+                          When only DISTRO is given: fvwm3
   --name NAME             Kernelspec directory name.
                           Default: vnc-novnc-DISTRO-DESKTOP.
   --display-name NAME     Kernel display name shown in Jupyter.
@@ -62,16 +64,16 @@ EOF
 list_variants() {
     cat <<'EOF'
 Supported variants:
-  debian12      fvwm3  registry.nersc.gov/library/nersc/novnc:debian-12-main
-  debian12      xfce   registry.nersc.gov/library/nersc/novnc:debian-12-xfce-main
-  ubuntu24.04   fvwm3  registry.nersc.gov/library/nersc/novnc:ubuntu-24.04-fvwm3-main
-  ubuntu24.04   xfce   registry.nersc.gov/library/nersc/novnc:ubuntu-24.04-xfce-main
-  ubuntu24.04   xfce-slurm registry.nersc.gov/library/nersc/novnc:ubuntu24.04-xfce-slurm
-  ubuntu        gpu-xfce registry.nersc.gov/library/nersc/novnc:ubuntu-gpu-xfce-main
-  alma9         fvwm3  registry.nersc.gov/library/nersc/novnc:alma-9-fvwm3-main
-  alma9         xfce   registry.nersc.gov/library/nersc/novnc:alma-9-xfce-main
-  opensuse15.6  xfce   registry.nersc.gov/library/nersc/novnc:opensuse-15.6-main
-  opensuse15.6  xfce-slurm registry.nersc.gov/library/nersc/novnc:opensuse15.6-xfce-slurm
+  debian12      fvwm3  registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:debian-12-main
+  debian12      xfce   registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:debian-12-xfce-main
+  ubuntu24.04   fvwm3  registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:ubuntu-24.04-fvwm3-main
+  ubuntu24.04   xfce   registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:ubuntu-24.04-xfce-main
+  ubuntu24.04   xfce-slurm registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:ubuntu24.04-xfce-slurm
+  ubuntu        gpu-xfce registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:ubuntu-gpu-xfce-main
+  alma9         fvwm3  registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:alma-9-fvwm3-main
+  alma9         xfce   registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:alma-9-xfce-main
+  opensuse15.6  xfce   registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:opensuse-15.6-main
+  opensuse15.6  xfce-slurm registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:opensuse15.6-xfce-slurm
 EOF
 }
 
@@ -113,47 +115,47 @@ set_variant_metadata() {
 
     case "${distro}:${desktop}" in
         debian12:fvwm3)
-            image="registry.nersc.gov/library/nersc/novnc:debian-12-main"
+            image="registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:debian-12-main"
             variant_slug="debian12-fvwm3"
             ;;
         debian12:xfce)
-            image="registry.nersc.gov/library/nersc/novnc:debian-12-xfce-main"
+            image="registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:debian-12-xfce-main"
             variant_slug="debian12-xfce"
             ;;
         ubuntu24.04:fvwm3)
-            image="registry.nersc.gov/library/nersc/novnc:ubuntu-24.04-fvwm3-main"
+            image="registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:ubuntu-24.04-fvwm3-main"
             variant_slug="ubuntu24.04-fvwm3"
             ;;
         ubuntu24.04:xfce)
-            image="registry.nersc.gov/library/nersc/novnc:ubuntu-24.04-xfce-main"
+            image="registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:ubuntu-24.04-xfce-main"
             variant_slug="ubuntu24.04-xfce"
             ;;
         ubuntu24.04:xfce-slurm)
-            image="registry.nersc.gov/library/nersc/novnc:ubuntu24.04-xfce-slurm"
+            image="registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:ubuntu24.04-xfce-slurm"
             variant_slug="ubuntu24.04-xfce-slurm"
             variant_gpu=1
             variant_slurm=1
             variant_ssh_proxy=1
             ;;
         ubuntu:gpu-xfce)
-            image="registry.nersc.gov/library/nersc/novnc:ubuntu-gpu-xfce-main"
+            image="registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:ubuntu-gpu-xfce-main"
             variant_slug="ubuntu-gpu-xfce"
             variant_gpu=1
             ;;
         alma9:fvwm3)
-            image="registry.nersc.gov/library/nersc/novnc:alma-9-fvwm3-main"
+            image="registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:alma-9-fvwm3-main"
             variant_slug="alma9-fvwm3"
             ;;
         alma9:xfce)
-            image="registry.nersc.gov/library/nersc/novnc:alma-9-xfce-main"
+            image="registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:alma-9-xfce-main"
             variant_slug="alma9-xfce"
             ;;
         opensuse15.6:xfce)
-            image="registry.nersc.gov/library/nersc/novnc:opensuse-15.6-main"
+            image="registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:opensuse-15.6-main"
             variant_slug="opensuse15.6-xfce"
             ;;
         opensuse15.6:xfce-slurm)
-            image="registry.nersc.gov/library/nersc/novnc:opensuse15.6-xfce-slurm"
+            image="registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:opensuse15.6-xfce-slurm"
             variant_slug="opensuse15.6-xfce-slurm"
             variant_gpu=1
             variant_slurm=1
@@ -174,7 +176,7 @@ apply_novnc_transport_image_metadata() {
 
     case "${distro}:${desktop}" in
         opensuse15.6:xfce-slurm)
-            image="registry.nersc.gov/library/nersc/novnc:opensuse15.6-xfce-slurm-unix"
+            image="registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:opensuse15.6-xfce-slurm-unix"
             ;;
     esac
 }
@@ -351,6 +353,11 @@ if [[ "${#positionals[@]}" -ge 2 ]]; then
     desktop_set=1
 fi
 
+if [[ "${distro_set}" -eq 0 && "${desktop_set}" -eq 0 && "${all_variants}" -eq 0 ]]; then
+    distro="opensuse15.6"
+    desktop="xfce-slurm"
+fi
+
 case "${display_mode,,}" in
     default|"")
         display_mode="default"
@@ -439,6 +446,7 @@ image_available_locally() {
 
 prepull_image() {
     local pull_image="$1"
+    local fallback_image
 
     if image_already_prepulled "${pull_image}"; then
         return 0
@@ -451,8 +459,28 @@ prepull_image() {
     fi
 
     printf 'Pre-pulling image: %s\n' "${pull_image}"
-    "${podman_hpc}" pull "${pull_image}"
-    prepulled_images+=("${pull_image}")
+    if "${podman_hpc}" pull "${pull_image}"; then
+        prepulled_images+=("${pull_image}")
+        return 0
+    fi
+
+    case "${pull_image}" in
+        registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:*)
+            fallback_image="${pull_image#registry.nersc.gov/}"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+
+    printf 'NERSC Registry pull failed; using GHCR directly: %s\n' "${fallback_image}" >&2
+    if image_available_locally "${fallback_image}"; then
+        printf 'Image already available locally or as a migrated podman-hpc image: %s\n' "${fallback_image}"
+    else
+        "${podman_hpc}" pull "${fallback_image}"
+    fi
+    image="${fallback_image}"
+    prepulled_images+=("${fallback_image}")
 }
 
 build_scli_server() {

@@ -27,7 +27,7 @@ from .runner import (
     jupyter_proxy_service_url,
     load_yaml_config,
     normalize_config,
-    prepare_image,
+    prepare_image_with_fallback,
     random_password,
     run_pull_policy,
     shell_join,
@@ -447,6 +447,13 @@ def main(argv=None):
             handle.write(password + "\n")
         os.chmod(password_file, 0o600)
 
+        if not args.dry_run:
+            pull_rc, args.image = prepare_image_with_fallback(
+                args.podman_hpc, args.image, args.pull_policy
+            )
+            if pull_rc != 0:
+                return pull_rc
+
         container_name = safe_container_name()
         run_args = build_podman_args(
             args,
@@ -460,10 +467,6 @@ def main(argv=None):
         if args.dry_run:
             print(shell_join(run_args))
             return 0
-
-        pull_rc = prepare_image(args.podman_hpc, args.image, args.pull_policy)
-        if pull_rc != 0:
-            return pull_rc
 
         return run_podman_kernel(run_args, args.podman_hpc, container_name)
 

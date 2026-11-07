@@ -1,7 +1,7 @@
 # Defaults used by the Jupyter kernelspec wrapper.
 # Values in strings are expanded from the host environment when the kernel starts.
 
-image: registry.nersc.gov/library/nersc/novnc:debian-12-main
+image: registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:opensuse15.6-xfce-slurm-unix
 userns: keep-id
 keep_groups: true
 pull_policy: missing
@@ -9,9 +9,9 @@ display_mode: default
 novnc_transport: unix
 novnc_socket:
 jupyter_proxy_service: vnc-novnc
-gpu: false
-slurm: false
-ssh_proxy: false
+gpu: true
+slurm: true
+ssh_proxy: true
 
 volume:
   - "/global:/global"
@@ -27,3 +27,7 @@ env:
   - "MODULEPATH"
   - "MODULEPATH_ROOT"
   - "MODULESHOME"
+  - "PE_ENV"
+  - "LMOD_FAMILY_MPI"
+  - "LMOD_FAMILY_CUDATOOLKIT"
+  - "LMOD_FAMILY_CUDATOOLKIT_VERSION"

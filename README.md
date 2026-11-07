@@ -14,23 +14,34 @@ for the commands below. A login-node server is suitable for setup, desktop
 interaction, and light work. For GPU access or compute-intensive applications,
 start a Jupyter server on an allocated compute node.
 
-The examples use images in `registry.nersc.gov`. This is a private NERSC
-registry: `podman-hpc login registry.nersc.gov` requires registry access, which
-users can request through <https://help.nersc.gov>. The public source repository
-does not make those image tags public. The Slurm-enabled kernel installer also
-builds two host-side helpers from the bundled Go source, so `go` must be on
-`PATH` before installation. Use `module spider go` to find an available Go
+GitHub Actions publishes the public images to the
+[GHCR package](https://github.com/orgs/NERSC/packages/container/package/perlmutter-desktop-containers)
+at `ghcr.io/nersc/perlmutter-desktop-containers` on pushes to `main`. The
+Perlmutter examples and kernel installer pull them through the
+[NERSC Registry pull-through cache](https://docs.nersc.gov/development/containers/registry/#pulling-images-through-the-pull-through-cache)
+using `registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers`.
+NERSC says the cache generally gives faster pulls and protects against
+upstream outages and rate limits, so it should perform better on Perlmutter
+than pulling directly from GHCR. The cache requires a NERSC Registry login on
+Perlmutter. If you do not have registry access, request it through
+<https://help.nersc.gov>. The installer and kernel launcher fall back to the
+public GHCR image if the cached pull fails, including when you have not logged
+in or the NERSC Registry is unavailable. The Slurm-enabled kernel installer
+also builds two host-side helpers from the bundled Go source, so `go` must be
+on `PATH` before installation. Use `module spider go` to find an available Go
 module if needed.
 
 Current NERSC references: [Perlmutter timeline](https://docs.nersc.gov/systems/perlmutter/timeline/),
 [Jupyter server choices](https://docs.nersc.gov/services/jupyter/reference/),
-[container registry access](https://docs.nersc.gov/development/containers/registry/),
+[podman-hpc](https://docs.nersc.gov/development/containers/podman-hpc/overview/),
 and [login-node policy](https://docs.nersc.gov/policies/resource-usage/).
 
-The default image is Debian 12 with fvwm3:
+The kernel installer's no-argument default is openSUSE Leap 15.6 XFCE Slurm
+with Unix noVNC, host-based SSH through the host proxy, and the mounted
+Perlmutter programming environment:
 
 ```text
-registry.nersc.gov/library/nersc/novnc:debian-12-main
+registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:opensuse15.6-xfce-slurm-unix
 ```
 
 Images include TigerVNC, noVNC, Chromium, D-Bus session helpers, common fonts,
@@ -55,9 +66,22 @@ git clone https://github.com/nersc/perlmutter-desktop-containers.git
 cd perlmutter-desktop-containers
 ```
 
-3. Load the NERSC Python and Go modules, log in to the NERSC registry, and
-   install the recommended openSUSE Leap 15.6 XFCE Slurm kernelspec. This
-   variant enables Unix noVNC, the Slurm CLI and SSH proxies, and GPU
+3. Load the NERSC Python and Go modules:
+
+```sh
+module load python
+module load go
+```
+
+   If you have access, log in to the NERSC Registry to use its pull-through
+   cache. You can skip this step and the installer will fall back to GHCR:
+
+```sh
+podman-hpc login registry.nersc.gov
+```
+
+   Install the default openSUSE Leap 15.6 XFCE Slurm kernelspec. This
+   variant enables Unix noVNC, the Slurm CLI and host SSH proxies, and GPU
    visibility in the generated kernelspec. `--prepull` makes the selected
    image available during installation so the first kernel startup does not
    have to wait for an image pull. If a migrated `podman-hpc` image is already
@@ -65,24 +89,19 @@ cd perlmutter-desktop-containers
    again.
 
 ```sh
-module load python
-module load go
-podman-hpc login registry.nersc.gov
-scripts/install-jupyter-kernel.sh opensuse15.6 xfce-slurm \
-  --novnc-transport unix \
-  --prepull \
-  --force
+scripts/install-jupyter-kernel.sh --prepull --force
 ```
 
 To refresh that image later without reinstalling the kernelspec:
 
 ```sh
 module load python
-podman-hpc login registry.nersc.gov
-scripts/install-jupyter-kernel.sh opensuse15.6 xfce-slurm \
-  --novnc-transport unix \
-  --prepull-only
+scripts/install-jupyter-kernel.sh --prepull-only
 ```
+
+If the cache pull fails, the installer pre-pulls directly from GHCR. An
+installed kernel also retries GHCR if its cached image is unavailable at
+startup.
 
 4. After the first Unix-mode install, stop and restart your JupyterLab server
    so it loads the new named proxy service. Create a new notebook with the
@@ -112,7 +131,7 @@ flowchart TD
     login[Start a Perlmutter Jupyter server at jupyter.nersc.gov]
     terminal[Open a JupyterLab terminal]
     clone[One-time setup clone this repo]
-    registry[Load Python and Go; log in to registry.nersc.gov]
+    modules[Load Python and Go modules; log in to registry.nersc.gov if available]
     install[Run install-jupyter-kernel.sh with prepull]
     notebook[Start a notebook with the new VNC kernel]
     firstcell[Run anything in the first cell]
@@ -123,8 +142,8 @@ flowchart TD
 
     login --> terminal
     terminal --> clone
-    clone --> registry
-    registry --> install
+    clone --> modules
+    modules --> install
     install --> restart[Restart JupyterLab server]
     restart --> notebook
     notebook --> firstcell
@@ -151,13 +170,16 @@ cd perlmutter-desktop-containers
 This path uses the default Debian 12 fvwm3 image. Other image tags are listed
 in the image variant table below.
 
-2. Load the NERSC Python module, log in to the registry, and run the helper:
+2. Load the NERSC Python module. If you have NERSC Registry access, run
+   `podman-hpc login registry.nersc.gov` to use the cache. Then run the helper
+   with the cached image reference; it retries GHCR directly if the cache pull
+   fails:
 
 ```sh
 module load python
-podman-hpc login registry.nersc.gov
 python3 -m vnc_novnc.runner \
-  --config scripts/run-vnc-novnc.yaml
+  --config scripts/run-vnc-novnc.yaml \
+  --image registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:debian-12-main
 ```
 
 The helper pulls the image if needed, starts it with `podman-hpc`, and prints a
@@ -168,7 +190,7 @@ forwards the browser to that port. Open the URL and enter the printed password.
 Example output:
 
 ```text
-Image: registry.nersc.gov/library/nersc/novnc:debian-12-main
+Image: registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:debian-12-main
 noVNC: https://jupyter.nersc.gov/user/your-user-name/your-server-name/proxy/49967/vnc.html?port=443&host=jupyter.nersc.gov&path=user%2Fyour-user-name%2Fyour-server-name%2Fproxy%2F49967%2Fwebsockify
 One-time VNC password: AbC123xY
 VNC server port is not exposed on the host.
@@ -189,19 +211,22 @@ images/<base-os>/<desktop>/Dockerfile
 The build context is the repository root so variants can reuse shared files
 from `container/` and `vnc_novnc/`.
 
-| Variant | Dockerfile | Published tag |
+| Variant | Dockerfile | Cached pull reference |
 | --- | --- | --- |
-| Debian 12 + fvwm3 | `images/debian-12/fvwm3/Dockerfile` | `registry.nersc.gov/library/nersc/novnc:debian-12-main` |
-| Debian 12 + XFCE | `images/debian-12/xfce/Dockerfile` | `registry.nersc.gov/library/nersc/novnc:debian-12-xfce-main` |
-| Ubuntu 24.04 + fvwm3 | `images/ubuntu-24.04/fvwm3/Dockerfile` | `registry.nersc.gov/library/nersc/novnc:ubuntu-24.04-fvwm3-main` |
-| Ubuntu 24.04 + XFCE | `images/ubuntu-24.04/xfce/Dockerfile` | `registry.nersc.gov/library/nersc/novnc:ubuntu-24.04-xfce-main` |
-| Ubuntu 24.04 + XFCE + Slurm CLI proxy | `images/ubuntu-24.04/xfce-slurm/Dockerfile` | `registry.nersc.gov/library/nersc/novnc:ubuntu24.04-xfce-slurm` |
-| Ubuntu CUDA + GPU XFCE | `images/ubuntu/gpu-xfce/Dockerfile` | `registry.nersc.gov/library/nersc/novnc:ubuntu-gpu-xfce-main` |
-| AlmaLinux 9 + fvwm3 | `images/alma-9/fvwm3/Dockerfile` | `registry.nersc.gov/library/nersc/novnc:alma-9-fvwm3-main` |
-| AlmaLinux 9 + XFCE | `images/alma-9/xfce/Dockerfile` | `registry.nersc.gov/library/nersc/novnc:alma-9-xfce-main` |
-| openSUSE Leap 15.6 + XFCE | `images/opensuse-15.6/xfce/Dockerfile` | `registry.nersc.gov/library/nersc/novnc:opensuse-15.6-main` |
-| openSUSE Leap 15.6 + XFCE + Slurm CLI proxy | `images/opensuse-15.6/xfce-slurm/Dockerfile` | `registry.nersc.gov/library/nersc/novnc:opensuse15.6-xfce-slurm` |
-| openSUSE Leap 15.6 + XFCE + Slurm CLI proxy + Unix noVNC | `images/opensuse-15.6/xfce-slurm/Dockerfile` | `registry.nersc.gov/library/nersc/novnc:opensuse15.6-xfce-slurm-unix` |
+| Debian 12 + fvwm3 | `images/debian-12/fvwm3/Dockerfile` | `registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:debian-12-main` |
+| Debian 12 + XFCE | `images/debian-12/xfce/Dockerfile` | `registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:debian-12-xfce-main` |
+| Ubuntu 24.04 + fvwm3 | `images/ubuntu-24.04/fvwm3/Dockerfile` | `registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:ubuntu-24.04-fvwm3-main` |
+| Ubuntu 24.04 + XFCE | `images/ubuntu-24.04/xfce/Dockerfile` | `registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:ubuntu-24.04-xfce-main` |
+| Ubuntu 24.04 + XFCE + Slurm CLI proxy | `images/ubuntu-24.04/xfce-slurm/Dockerfile` | `registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:ubuntu24.04-xfce-slurm` |
+| Ubuntu CUDA + GPU XFCE | `images/ubuntu/gpu-xfce/Dockerfile` | `registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:ubuntu-gpu-xfce-main` |
+| AlmaLinux 9 + fvwm3 | `images/alma-9/fvwm3/Dockerfile` | `registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:alma-9-fvwm3-main` |
+| AlmaLinux 9 + XFCE | `images/alma-9/xfce/Dockerfile` | `registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:alma-9-xfce-main` |
+| openSUSE Leap 15.6 + XFCE | `images/opensuse-15.6/xfce/Dockerfile` | `registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:opensuse-15.6-main` |
+| openSUSE Leap 15.6 + XFCE + Slurm CLI proxy | `images/opensuse-15.6/xfce-slurm/Dockerfile` | `registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:opensuse15.6-xfce-slurm` |
+| openSUSE Leap 15.6 + XFCE + Slurm CLI proxy + Unix noVNC | `images/opensuse-15.6/xfce-slurm/Dockerfile` | `registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:opensuse15.6-xfce-slurm-unix` |
+
+The two openSUSE Slurm tags refer to the same image build; the launcher selects
+the noVNC transport at runtime.
 
 AlmaLinux 10 fvwm3 and XFCE Dockerfiles are scaffolded under `images/alma-10/`,
 but they are not in CI yet. `podman-hpc run` package probes against AlmaLinux
@@ -210,25 +235,26 @@ XFCE desktop stack.
 
 ## Build
 
-At NERSC, build with `podman-hpc`:
+At NERSC, build with `podman-hpc`. These commands use local tags; the
+pull-through cache is for pulling the images published by GitHub Actions:
 
 ```sh
-podman-hpc build -f images/debian-12/fvwm3/Dockerfile -t registry.nersc.gov/library/nersc/novnc:debian-12-main .
+podman-hpc build -f images/debian-12/fvwm3/Dockerfile -t localhost/perlmutter-desktop-containers:debian-12-main .
 ```
 
 Build another variant by selecting its Dockerfile:
 
 ```sh
-podman-hpc build -f images/debian-12/xfce/Dockerfile -t registry.nersc.gov/library/nersc/novnc:debian-12-xfce-main .
-podman-hpc build -f images/ubuntu-24.04/fvwm3/Dockerfile -t registry.nersc.gov/library/nersc/novnc:ubuntu-24.04-fvwm3-main .
-podman-hpc build -f images/ubuntu-24.04/xfce/Dockerfile -t registry.nersc.gov/library/nersc/novnc:ubuntu-24.04-xfce-main .
-podman-hpc build -f images/ubuntu-24.04/xfce-slurm/Dockerfile -t registry.nersc.gov/library/nersc/novnc:ubuntu24.04-xfce-slurm .
-podman-hpc build -f images/ubuntu/gpu-xfce/Dockerfile -t registry.nersc.gov/library/nersc/novnc:ubuntu-gpu-xfce-main .
-podman-hpc build -f images/alma-9/fvwm3/Dockerfile -t registry.nersc.gov/library/nersc/novnc:alma-9-fvwm3-main .
-podman-hpc build -f images/alma-9/xfce/Dockerfile -t registry.nersc.gov/library/nersc/novnc:alma-9-xfce-main .
-podman-hpc build -f images/opensuse-15.6/xfce/Dockerfile -t registry.nersc.gov/library/nersc/novnc:opensuse-15.6-main .
-podman-hpc build -f images/opensuse-15.6/xfce-slurm/Dockerfile -t registry.nersc.gov/library/nersc/novnc:opensuse15.6-xfce-slurm .
-podman-hpc build -f images/opensuse-15.6/xfce-slurm/Dockerfile -t registry.nersc.gov/library/nersc/novnc:opensuse15.6-xfce-slurm-unix .
+podman-hpc build -f images/debian-12/xfce/Dockerfile -t localhost/perlmutter-desktop-containers:debian-12-xfce-main .
+podman-hpc build -f images/ubuntu-24.04/fvwm3/Dockerfile -t localhost/perlmutter-desktop-containers:ubuntu-24.04-fvwm3-main .
+podman-hpc build -f images/ubuntu-24.04/xfce/Dockerfile -t localhost/perlmutter-desktop-containers:ubuntu-24.04-xfce-main .
+podman-hpc build -f images/ubuntu-24.04/xfce-slurm/Dockerfile -t localhost/perlmutter-desktop-containers:ubuntu24.04-xfce-slurm .
+podman-hpc build -f images/ubuntu/gpu-xfce/Dockerfile -t localhost/perlmutter-desktop-containers:ubuntu-gpu-xfce-main .
+podman-hpc build -f images/alma-9/fvwm3/Dockerfile -t localhost/perlmutter-desktop-containers:alma-9-fvwm3-main .
+podman-hpc build -f images/alma-9/xfce/Dockerfile -t localhost/perlmutter-desktop-containers:alma-9-xfce-main .
+podman-hpc build -f images/opensuse-15.6/xfce/Dockerfile -t localhost/perlmutter-desktop-containers:opensuse-15.6-main .
+podman-hpc build -f images/opensuse-15.6/xfce-slurm/Dockerfile -t localhost/perlmutter-desktop-containers:opensuse15.6-xfce-slurm .
+podman-hpc build -f images/opensuse-15.6/xfce-slurm/Dockerfile -t localhost/perlmutter-desktop-containers:opensuse15.6-xfce-slurm-unix .
 ```
 
 The `ubuntu gpu-xfce` kernelspec generated by `scripts/install-jupyter-kernel.sh`
@@ -238,7 +264,7 @@ Python runner:
 ```sh
 python3 -m vnc_novnc.runner \
   --config scripts/run-vnc-novnc.yaml \
-  --image registry.nersc.gov/library/nersc/novnc:ubuntu-gpu-xfce-main \
+  --image registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:ubuntu-gpu-xfce-main \
   --gpu
 ```
 
@@ -338,7 +364,7 @@ flowchart TB
 ```sh
 python3 -m vnc_novnc.runner \
   --config scripts/run-vnc-novnc.yaml \
-  --image registry.nersc.gov/library/nersc/novnc:opensuse15.6-xfce-slurm-unix \
+  --image registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:opensuse15.6-xfce-slurm-unix \
   --novnc-transport unix \
   --gpu \
   --slurm \
@@ -358,7 +384,9 @@ python3 -m vnc_novnc.runner \
 The preferred runner is the Python helper:
 
 ```sh
-python3 -m vnc_novnc.runner --config scripts/run-vnc-novnc.yaml
+python3 -m vnc_novnc.runner \
+  --config scripts/run-vnc-novnc.yaml \
+  --image registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:debian-12-main
 ```
 
 Run module commands in this guide from the repository root. This lets Python
@@ -370,10 +398,11 @@ the password in a temporary `0600` file, binds the noVNC host port to
 `127.0.0.1` by default, and prints the noVNC URL. It also generates a Jupyter
 Server Proxy URL when it can determine the Jupyter user/server prefix.
 
-The legacy shell helper is still available for the default image:
+The legacy shell helper can also use the cached image:
 
 ```sh
-scripts/run-vnc-novnc.sh
+IMAGE=registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:debian-12-main \
+  scripts/run-vnc-novnc.sh
 ```
 
 The Python helper is more complete: it supports YAML defaults, image
@@ -383,7 +412,7 @@ extra `podman-hpc` arguments.
 Example output:
 
 ```text
-Image: registry.nersc.gov/library/nersc/novnc:debian-12-main
+Image: registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:debian-12-main
 noVNC: https://jupyter.nersc.gov/user/your-user-name/your-server-name/proxy/49967/vnc.html?port=443&host=jupyter.nersc.gov&path=user%2Fyour-user-name%2Fyour-server-name%2Fproxy%2F49967%2Fwebsockify
 One-time VNC password: AbC123xY
 VNC server port is not exposed on the host.
@@ -437,7 +466,7 @@ Common settings:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `IMAGE` | `registry.nersc.gov/library/nersc/novnc:debian-12-main` | Container image to run. |
+| `IMAGE` | `ghcr.io/nersc/perlmutter-desktop-containers:debian-12-main` | Container image to run. Set it to the cached reference in the examples above for Perlmutter. |
 | `HOST_NOVNC_ADDR` | `127.0.0.1` | Host address for noVNC port publication. |
 | `HOST_NOVNC_PORT` | random | Host port for noVNC. |
 | `NOVNC_PORT` | `6080` | noVNC port inside the container. |
@@ -567,16 +596,18 @@ After installing a Unix-mode kernel and restarting JupyterLab so its named
 proxy service is loaded, the manual runner can also use Unix-socket transport:
 
 ```sh
-python3 -m vnc_novnc.runner --novnc-transport unix
+python3 -m vnc_novnc.runner \
+  --image registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:debian-12-main \
+  --novnc-transport unix
 ```
 
 Use another published variant:
 
 ```sh
-python3 -m vnc_novnc.runner --image registry.nersc.gov/library/nersc/novnc:opensuse-15.6-main
-python3 -m vnc_novnc.runner --image registry.nersc.gov/library/nersc/novnc:ubuntu-24.04-xfce-main
-python3 -m vnc_novnc.runner --image registry.nersc.gov/library/nersc/novnc:ubuntu24.04-xfce-slurm --slurm
-python3 -m vnc_novnc.runner --image registry.nersc.gov/library/nersc/novnc:alma-9-xfce-main
+python3 -m vnc_novnc.runner --image registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:opensuse-15.6-main
+python3 -m vnc_novnc.runner --image registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:ubuntu-24.04-xfce-main
+python3 -m vnc_novnc.runner --image registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:ubuntu24.04-xfce-slurm --slurm
+python3 -m vnc_novnc.runner --image registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:alma-9-xfce-main
 ```
 
 The `--slurm` example requires the host-side `scli-server` binary created by
@@ -585,7 +616,9 @@ the Slurm-enabled kernel installer.
 Expose the raw VNC server port in addition to noVNC:
 
 ```sh
-python3 -m vnc_novnc.runner --expose-vnc
+python3 -m vnc_novnc.runner \
+  --image registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:debian-12-main \
+  --expose-vnc
 ```
 
 Mount host directories into the container:
@@ -604,13 +637,10 @@ python3 -m vnc_novnc.runner -- --ipc=host
 
 ## Jupyter Kernel
 
-Install the recommended openSUSE Leap 15.6 XFCE Slurm kernelspec:
+Install the default openSUSE Leap 15.6 XFCE Slurm kernelspec:
 
 ```sh
-scripts/install-jupyter-kernel.sh opensuse15.6 xfce-slurm \
-  --novnc-transport unix \
-  --prepull \
-  --force
+scripts/install-jupyter-kernel.sh --prepull --force
 ```
 
 This installs the Python package in editable mode for the current user and
@@ -621,7 +651,7 @@ ${HOME}/.local/share/jupyter/kernels/vnc-novnc-DISTRO-DESKTOP
 ```
 
 With Unix noVNC transport, this uses the
-`registry.nersc.gov/library/nersc/novnc:opensuse15.6-xfce-slurm-unix` image.
+`registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:opensuse15.6-xfce-slurm-unix` image.
 The kernelspec directory is `vnc-novnc-opensuse15.6-xfce-slurm`; the display
 name is `VNC-opensuse15.6-xfce-slurm`.
 
@@ -629,6 +659,7 @@ Useful installer options:
 
 | Option | Purpose |
 | --- | --- |
+| No variant arguments | Install the openSUSE Leap 15.6 XFCE Slurm kernel with Unix noVNC, host SSH proxy, and Perlmutter PE settings. |
 | `DISTRO DESKTOP` | Select the image variant, for example `ubuntu24.04 xfce` or `opensuse15.6 xfce`. |
 | `--distro DISTRO`, `--desktop DESKTOP` | Select the same variant with explicit options. |
 | `--all` | Install one kernelspec for every supported distro/desktop combination. |
@@ -653,7 +684,7 @@ Useful installer options:
 Examples:
 
 ```sh
-scripts/install-jupyter-kernel.sh opensuse15.6 xfce-slurm --novnc-transport unix --prepull --force
+scripts/install-jupyter-kernel.sh --prepull --force
 scripts/install-jupyter-kernel.sh ubuntu24.04 xfce --force
 scripts/install-jupyter-kernel.sh ubuntu24.04 xfce-slurm --force
 scripts/install-jupyter-kernel.sh opensuse15.6 xfce --force
@@ -675,8 +706,8 @@ Restart the Jupyter session after the first Unix-mode install so the
 JupyterLab if the new kernel does not appear immediately.
 
 For `opensuse15.6 xfce-slurm`, Unix-mode installs use the separate image tag
-`registry.nersc.gov/library/nersc/novnc:opensuse15.6-xfce-slurm-unix` so the TCP-mode
-image tag remains unchanged.
+`registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:opensuse15.6-xfce-slurm-unix`
+so the TCP-mode image tag remains unchanged.
 
 ## Kernel Behavior
 
@@ -742,7 +773,7 @@ vnc_novnc.display_connection()
 The sample kernel config is `kernels/vnc-novnc/vnc-novnc.yaml`:
 
 ```yaml
-image: registry.nersc.gov/library/nersc/novnc:debian-12-main
+image: registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:opensuse15.6-xfce-slurm-unix
 userns: keep-id
 keep_groups: true
 pull_policy: missing
@@ -750,7 +781,9 @@ display_mode: default
 novnc_transport: unix
 novnc_socket:
 jupyter_proxy_service: vnc-novnc
-gpu: false
+gpu: true
+slurm: true
+ssh_proxy: true
 
 volume:
   - "/global:/global"
