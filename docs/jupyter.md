@@ -178,7 +178,7 @@ This installs the Python package in editable mode for the current user and
 copies the selected kernelspec into:
 
 ```text
-${HOME}/.local/share/jupyter/jupyter/kernelspec-DISTRO-DESKTOP
+${HOME}/.local/share/jupyter/kernels/vnc-novnc-opensuse15.6-xfce-slurm
 ```
 
 With Unix noVNC transport, this uses the
