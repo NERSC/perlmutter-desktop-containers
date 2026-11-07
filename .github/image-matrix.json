@@ -1,0 +1,84 @@
+{
+  "include": [
+    {
+      "name": "Debian 12 fvwm3",
+      "dockerfile": "images/debian-12/fvwm3/Dockerfile",
+      "cache_scope": "debian-12-fvwm3",
+      "platforms": "linux/amd64,linux/arm64",
+      "ci_tag": "vnc-novnc-container:debian-12-fvwm3-ci",
+      "main_tag": "debian-12-main"
+    },
+    {
+      "name": "Debian 12 XFCE",
+      "dockerfile": "images/debian-12/xfce/Dockerfile",
+      "cache_scope": "debian-12-xfce",
+      "platforms": "linux/amd64,linux/arm64",
+      "ci_tag": "vnc-novnc-container:debian-12-xfce-ci",
+      "main_tag": "debian-12-xfce-main"
+    },
+    {
+      "name": "Ubuntu 24.04 fvwm3",
+      "dockerfile": "images/ubuntu-24.04/fvwm3/Dockerfile",
+      "cache_scope": "ubuntu-24.04-fvwm3",
+      "platforms": "linux/amd64",
+      "ci_tag": "vnc-novnc-container:ubuntu-24.04-fvwm3-ci",
+      "main_tag": "ubuntu-24.04-fvwm3-main"
+    },
+    {
+      "name": "Ubuntu 24.04 XFCE",
+      "dockerfile": "images/ubuntu-24.04/xfce/Dockerfile",
+      "cache_scope": "ubuntu-24.04-xfce",
+      "platforms": "linux/amd64",
+      "ci_tag": "vnc-novnc-container:ubuntu-24.04-xfce-ci",
+      "main_tag": "ubuntu-24.04-xfce-main"
+    },
+    {
+      "name": "Ubuntu 24.04 XFCE Slurm",
+      "dockerfile": "images/ubuntu-24.04/xfce-slurm/Dockerfile",
+      "cache_scope": "ubuntu-24.04-xfce-slurm",
+      "platforms": "linux/amd64",
+      "ci_tag": "vnc-novnc-container:ubuntu-24.04-xfce-slurm-ci",
+      "main_tag": "ubuntu24.04-xfce-slurm"
+    },
+    {
+      "name": "Ubuntu CUDA gpu-xfce",
+      "dockerfile": "images/ubuntu/gpu-xfce/Dockerfile",
+      "cache_scope": "ubuntu-gpu-xfce",
+      "platforms": "linux/amd64",
+      "ci_tag": "vnc-novnc-container:ubuntu-gpu-xfce-ci",
+      "main_tag": "ubuntu-gpu-xfce-main"
+    },
+    {
+      "name": "AlmaLinux 9 fvwm3",
+      "dockerfile": "images/alma-9/fvwm3/Dockerfile",
+      "cache_scope": "alma-9-fvwm3",
+      "platforms": "linux/amd64",
+      "ci_tag": "vnc-novnc-container:alma-9-fvwm3-ci",
+      "main_tag": "alma-9-fvwm3-main"
+    },
+    {
+      "name": "AlmaLinux 9 XFCE",
+      "dockerfile": "images/alma-9/xfce/Dockerfile",
+      "cache_scope": "alma-9-xfce",
+      "platforms": "linux/amd64",
+      "ci_tag": "vnc-novnc-container:alma-9-xfce-ci",
+      "main_tag": "alma-9-xfce-main"
+    },
+    {
+      "name": "openSUSE Leap 15.6 XFCE",
+      "dockerfile": "images/opensuse-15.6/xfce/Dockerfile",
+      "cache_scope": "opensuse-15.6-xfce",
+      "platforms": "linux/amd64,linux/arm64",
+      "ci_tag": "vnc-novnc-container:opensuse-15.6-xfce-ci",
+      "main_tag": "opensuse-15.6-main"
+    },
+    {
+      "name": "openSUSE Leap 15.6 XFCE Slurm",
+      "dockerfile": "images/opensuse-15.6/xfce-slurm/Dockerfile",
+      "cache_scope": "opensuse-15.6-xfce-slurm",
+      "platforms": "linux/amd64",
+      "ci_tag": "vnc-novnc-container:opensuse-15.6-xfce-slurm-ci",
+      "main_tag": "opensuse15.6-xfce-slurm"
+    }
+  ]
+}

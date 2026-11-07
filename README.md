@@ -16,7 +16,10 @@ start a Jupyter server on an allocated compute node.
 
 GitHub Actions publishes the public images to the
 [GHCR package](https://github.com/orgs/NERSC/packages/container/package/perlmutter-desktop-containers)
-at `ghcr.io/nersc/perlmutter-desktop-containers` on pushes to `main`. The
+at `ghcr.io/nersc/perlmutter-desktop-containers` when their inputs change on
+`main`. A new Git tag or published release rebuilds every variant under a
+versioned tag such as `opensuse-15.6-xfce-slurm-v1.0.0`; a manual workflow run
+also rebuilds every variant. The
 Perlmutter examples and kernel installer pull them through the
 [NERSC Registry pull-through cache](https://docs.nersc.gov/development/containers/registry/#pulling-images-through-the-pull-through-cache)
 using `registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers`.
