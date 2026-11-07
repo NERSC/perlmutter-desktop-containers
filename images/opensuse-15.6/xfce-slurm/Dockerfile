@@ -6,7 +6,9 @@ ARG TARGETARCH
 WORKDIR /src
 COPY container/slurm-cli-proxy/go.mod container/slurm-cli-proxy/go.sum ./
 RUN go mod download
-COPY container/slurm-cli-proxy/ ./
+COPY container/slurm-cli-proxy/cmd/scli/ ./cmd/scli/
+COPY container/slurm-cli-proxy/cmd/ssh-proxy/ ./cmd/ssh-proxy/
+COPY container/slurm-cli-proxy/internal/ ./internal/
 RUN \
     set -eu; \
     arch="${TARGETARCH:-amd64}"; \

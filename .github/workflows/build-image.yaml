@@ -3,20 +3,18 @@ name: Build VNC/noVNC images
 on:
   push:
     branches: [ main ]
-    paths:
-      - .github/workflows/build-image.yaml
-      - images/**
-      - container/**
-      - vnc_novnc/**
+    tags: [ '**' ]
 
-  pull_request:
-    paths:
-      - .github/workflows/build-image.yaml
-      - images/**
-      - container/**
-      - vnc_novnc/**
+  pull_request: {}
+
+  release:
+    types: [ published ]
 
   workflow_dispatch:
+
+concurrency:
+  group: build-images-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -27,87 +25,32 @@ env:
   IMAGE_NAME: nersc/perlmutter-desktop-containers
 
 jobs:
+  select_images:
+    name: Select affected images
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.select.outputs.matrix }}
+      count: ${{ steps.select.outputs.count }}
+
+    steps:
+      - name: Check out repository and history
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Select images
+        id: select
+        run: python3 .github/scripts/select-images.py
+
   build_and_push_images:
     name: Build and push ${{ matrix.name }}
+    needs: select_images
+    if: needs.select_images.outputs.count != '0'
     runs-on: ubuntu-24.04
 
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - name: Debian 12 fvwm3
-            dockerfile: images/debian-12/fvwm3/Dockerfile
-            cache_scope: debian-12-fvwm3
-            platforms: linux/amd64,linux/arm64
-            ci_tag: vnc-novnc-container:debian-12-fvwm3-ci
-            publish_tags: |
-              type=raw,value=debian-12-main
-              type=raw,value=latest
-
-          - name: Debian 12 XFCE
-            dockerfile: images/debian-12/xfce/Dockerfile
-            cache_scope: debian-12-xfce
-            platforms: linux/amd64,linux/arm64
-            ci_tag: vnc-novnc-container:debian-12-xfce-ci
-            publish_tags: type=raw,value=debian-12-xfce-main
-
-          - name: Ubuntu 24.04 fvwm3
-            dockerfile: images/ubuntu-24.04/fvwm3/Dockerfile
-            cache_scope: ubuntu-24.04-fvwm3
-            platforms: linux/amd64
-            ci_tag: vnc-novnc-container:ubuntu-24.04-fvwm3-ci
-            publish_tags: type=raw,value=ubuntu-24.04-fvwm3-main
-
-          - name: Ubuntu 24.04 XFCE
-            dockerfile: images/ubuntu-24.04/xfce/Dockerfile
-            cache_scope: ubuntu-24.04-xfce
-            platforms: linux/amd64
-            ci_tag: vnc-novnc-container:ubuntu-24.04-xfce-ci
-            publish_tags: type=raw,value=ubuntu-24.04-xfce-main
-
-          - name: Ubuntu 24.04 XFCE Slurm
-            dockerfile: images/ubuntu-24.04/xfce-slurm/Dockerfile
-            cache_scope: ubuntu-24.04-xfce-slurm
-            platforms: linux/amd64
-            ci_tag: vnc-novnc-container:ubuntu-24.04-xfce-slurm-ci
-            publish_tags: type=raw,value=ubuntu24.04-xfce-slurm
-
-          - name: Ubuntu CUDA gpu-xfce
-            dockerfile: images/ubuntu/gpu-xfce/Dockerfile
-            cache_scope: ubuntu-gpu-xfce
-            platforms: linux/amd64
-            ci_tag: vnc-novnc-container:ubuntu-gpu-xfce-ci
-            publish_tags: type=raw,value=ubuntu-gpu-xfce-main
-
-          - name: AlmaLinux 9 fvwm3
-            dockerfile: images/alma-9/fvwm3/Dockerfile
-            cache_scope: alma-9-fvwm3
-            platforms: linux/amd64
-            ci_tag: vnc-novnc-container:alma-9-fvwm3-ci
-            publish_tags: type=raw,value=alma-9-fvwm3-main
-
-          - name: AlmaLinux 9 XFCE
-            dockerfile: images/alma-9/xfce/Dockerfile
-            cache_scope: alma-9-xfce
-            platforms: linux/amd64
-            ci_tag: vnc-novnc-container:alma-9-xfce-ci
-            publish_tags: type=raw,value=alma-9-xfce-main
-
-          - name: openSUSE Leap 15.6 XFCE
-            dockerfile: images/opensuse-15.6/xfce/Dockerfile
-            cache_scope: opensuse-15.6-xfce
-            platforms: linux/amd64,linux/arm64
-            ci_tag: vnc-novnc-container:opensuse-15.6-xfce-ci
-            publish_tags: type=raw,value=opensuse-15.6-main
-
-          - name: openSUSE Leap 15.6 XFCE Slurm
-            dockerfile: images/opensuse-15.6/xfce-slurm/Dockerfile
-            cache_scope: opensuse-15.6-xfce-slurm
-            platforms: linux/amd64
-            ci_tag: vnc-novnc-container:opensuse-15.6-xfce-slurm-ci
-            publish_tags: |
-              type=raw,value=opensuse15.6-xfce-slurm
-              type=raw,value=opensuse15.6-xfce-slurm-unix
+      matrix: ${{ fromJSON(needs.select_images.outputs.matrix) }}
 
     steps:
       - name: Check out repository
@@ -120,7 +63,7 @@ jobs:
         uses: docker/setup-buildx-action@v4
 
       - name: Log in to GHCR
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
         uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
@@ -132,7 +75,12 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: ${{ matrix.publish_tags }}
+          flavor: latest=false
+          tags: |
+            type=raw,value=${{ matrix.main_tag }},enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' && matrix.cache_scope == 'debian-12-fvwm3' }}
+            type=raw,value=opensuse15.6-xfce-slurm-unix,enable=${{ github.ref == 'refs/heads/main' && matrix.cache_scope == 'opensuse-15.6-xfce-slurm' }}
+            type=raw,value=${{ matrix.cache_scope }}-${{ github.ref_name }},enable=${{ startsWith(github.ref, 'refs/tags/') }}
 
       - name: Build image
         uses: docker/build-push-action@v7
@@ -194,7 +142,7 @@ jobs:
           '
 
       - name: Build and push multi-arch image
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
         uses: docker/build-push-action@v7
         with:
           context: .
