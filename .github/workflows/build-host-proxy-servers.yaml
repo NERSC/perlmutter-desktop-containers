@@ -18,6 +18,7 @@ on:
 
 permissions:
   contents: read
+  packages: write
 
 jobs:
   build:
@@ -46,7 +47,7 @@ jobs:
           test -x "${RUNNER_TEMP}/scli-server"
           test -x "${RUNNER_TEMP}/ssh-proxy-server"
           file "${RUNNER_TEMP}/scli-server" "${RUNNER_TEMP}/ssh-proxy-server"
-          sha256sum "${RUNNER_TEMP}/scli-server" "${RUNNER_TEMP}/ssh-proxy-server" > "${RUNNER_TEMP}/SHA256SUMS"
+          (cd "${RUNNER_TEMP}" && sha256sum scli-server ssh-proxy-server > SHA256SUMS)
 
       - name: Upload host proxy test binaries
         uses: actions/upload-artifact@v7
@@ -57,3 +58,35 @@ jobs:
             ${{ runner.temp }}/ssh-proxy-server
             ${{ runner.temp }}/SHA256SUMS
           if-no-files-found: error
+
+      - name: Build host proxy package
+        run: |
+          docker build \
+            -f container/slurm-cli-proxy/host-binaries.Dockerfile \
+            -t host-proxies:test \
+            "${RUNNER_TEMP}"
+
+      - name: Verify packaged binaries
+        run: |
+          container_id="$(docker create host-proxies:test)"
+          trap 'docker rm -f "${container_id}" >/dev/null' EXIT
+          mkdir -p "${RUNNER_TEMP}/package-check"
+          docker cp "${container_id}:/usr/local/bin/." "${RUNNER_TEMP}/package-check"
+          (cd "${RUNNER_TEMP}/package-check" && sha256sum -c SHA256SUMS)
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish host proxy package
+        if: github.event_name != 'pull_request'
+        run: |
+          image=ghcr.io/nersc/perlmutter-desktop-containers
+          docker tag host-proxies:test "${image}:host-proxies-linux-amd64"
+          docker tag host-proxies:test "${image}:host-proxies-linux-amd64-${GITHUB_SHA}"
+          docker push "${image}:host-proxies-linux-amd64-${GITHUB_SHA}"
+          docker push "${image}:host-proxies-linux-amd64"

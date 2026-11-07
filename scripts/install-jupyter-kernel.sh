@@ -53,7 +53,7 @@ Options:
   --all                   Install one kernelspec for every supported variant.
   --prepull               Run "podman-hpc pull IMAGE" for each installed image.
   --prepull-only          Only run "podman-hpc pull IMAGE"; do not install kernelspecs.
-  --podman-hpc COMMAND    podman-hpc command used by --prepull and --prepull-only.
+  --podman-hpc COMMAND    podman-hpc command used for image pulls and host proxy installation.
                           Default: ${PODMAN_HPC:-podman-hpc}
   --list-variants         Print supported DISTRO/DESKTOP combinations.
   --force                 Replace an existing kernelspec directory.
@@ -214,8 +214,7 @@ extra_podman_args=()
 variant_gpu=0
 variant_slurm=0
 variant_ssh_proxy=0
-scli_server_built=0
-ssh_proxy_server_built=0
+host_proxy_servers_installed=0
 jupyter_proxy_config_installed=0
 
 while [[ "$#" -gt 0 ]]; do
@@ -483,56 +482,61 @@ prepull_image() {
     prepulled_images+=("${fallback_image}")
 }
 
-build_scli_server() {
-    local user_key="${USER:-$(id -u)}"
-    local go_cache="${GOCACHE:-${TMPDIR:-/tmp}/vnc-novnc-go-build-cache-${user_key}}"
-    local go_mod_cache="${GOMODCACHE:-${TMPDIR:-/tmp}/vnc-novnc-go-mod-cache-${user_key}}"
-    local output="${HOME}/bin/scli-server"
+install_host_proxy_servers() {
+    local package_image="${HOST_PROXY_IMAGE:-registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:host-proxies-linux-amd64}"
+    local fallback_image
 
-    if [[ "${scli_server_built}" -eq 1 ]]; then
+    if [[ "${host_proxy_servers_installed}" -eq 1 ]]; then
         return 0
     fi
-
-    if ! command -v go >/dev/null 2>&1; then
-        printf 'go is required to build scli-server for Slurm-enabled kernels.\n' >&2
-        printf 'Load or install Go, then rerun this installer.\n' >&2
-        exit 1
+    if [[ "$(uname -m)" != "x86_64" ]]; then
+        printf 'The published host proxy binaries require an x86_64 host.\n' >&2
+        return 1
+    fi
+    if ! command -v "${podman_hpc}" >/dev/null 2>&1; then
+        printf 'podman-hpc is required to install the host proxy binaries.\n' >&2
+        return 1
     fi
 
-    mkdir -p "${HOME}/bin"
-    printf 'Building scli-server: %s\n' "${output}"
+    if ! image_available_locally "${package_image}"; then
+        printf 'Pulling host proxy binaries: %s\n' "${package_image}"
+        if ! "${podman_hpc}" pull "${package_image}"; then
+            case "${package_image}" in
+                registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:*)
+                    fallback_image="${package_image#registry.nersc.gov/}"
+                    ;;
+                *)
+                    return 1
+                    ;;
+            esac
+            printf 'NERSC Registry pull failed; using GHCR directly: %s\n' "${fallback_image}" >&2
+            package_image="${fallback_image}"
+            if ! image_available_locally "${package_image}"; then
+                "${podman_hpc}" pull "${package_image}"
+            fi
+        fi
+    fi
+
     (
-        cd "${repo_dir}/container/slurm-cli-proxy"
-        GOCACHE="${go_cache}" GOMODCACHE="${go_mod_cache}" go build -o "${output}" ./cmd/scli-server
+        staging_dir="$(mktemp -d "${TMPDIR:-/tmp}/vnc-novnc-host-proxies.XXXXXXXX")"
+        container_id=""
+        cleanup() {
+            if [[ -n "${container_id}" ]]; then
+                "${podman_hpc}" rm "${container_id}" >/dev/null 2>&1 || true
+            fi
+            rm -rf "${staging_dir}"
+        }
+        trap cleanup EXIT
+
+        container_id="$("${podman_hpc}" create "${package_image}")"
+        "${podman_hpc}" cp "${container_id}:/usr/local/bin/." "${staging_dir}"
+        (cd "${staging_dir}" && sha256sum -c SHA256SUMS)
+        mkdir -p "${HOME}/bin"
+        install -m 0755 "${staging_dir}/scli-server" "${HOME}/bin/scli-server"
+        install -m 0755 "${staging_dir}/ssh-proxy-server" "${HOME}/bin/ssh-proxy-server"
     )
-    chmod 0755 "${output}"
-    scli_server_built=1
-}
-
-build_ssh_proxy_server() {
-    local user_key="${USER:-$(id -u)}"
-    local go_cache="${GOCACHE:-${TMPDIR:-/tmp}/vnc-novnc-go-build-cache-${user_key}}"
-    local go_mod_cache="${GOMODCACHE:-${TMPDIR:-/tmp}/vnc-novnc-go-mod-cache-${user_key}}"
-    local output="${HOME}/bin/ssh-proxy-server"
-
-    if [[ "${ssh_proxy_server_built}" -eq 1 ]]; then
-        return 0
-    fi
-
-    if ! command -v go >/dev/null 2>&1; then
-        printf 'go is required to build ssh-proxy-server for SSH proxy-enabled kernels.\n' >&2
-        printf 'Load or install Go, then rerun this installer.\n' >&2
-        exit 1
-    fi
-
-    mkdir -p "${HOME}/bin"
-    printf 'Building ssh-proxy-server: %s\n' "${output}"
-    (
-        cd "${repo_dir}/container/slurm-cli-proxy"
-        GOCACHE="${go_cache}" GOMODCACHE="${go_mod_cache}" go build -o "${output}" ./cmd/ssh-proxy-server
-    )
-    chmod 0755 "${output}"
-    ssh_proxy_server_built=1
+    host_proxy_servers_installed=1
+    printf 'Installed host proxy binaries in %s/bin.\n' "${HOME}"
 }
 
 install_jupyter_proxy_config() {
@@ -628,11 +632,8 @@ install_one() {
         variant_ssh_proxy="${ssh_proxy_override}"
     fi
 
-    if [[ "${variant_slurm}" -eq 1 ]]; then
-        build_scli_server
-    fi
-    if [[ "${variant_ssh_proxy}" -eq 1 ]]; then
-        build_ssh_proxy_server
+    if [[ "${variant_slurm}" -eq 1 || "${variant_ssh_proxy}" -eq 1 ]]; then
+        install_host_proxy_servers
     fi
 
     if [[ "${prepull}" -eq 1 ]]; then

@@ -20,16 +20,16 @@ at `ghcr.io/nersc/perlmutter-desktop-containers` on pushes to `main`. The
 Perlmutter examples and kernel installer pull them through the
 [NERSC Registry pull-through cache](https://docs.nersc.gov/development/containers/registry/#pulling-images-through-the-pull-through-cache)
 using `registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers`.
-NERSC says the cache generally gives faster pulls and protects against
+The cache generally gives faster pulls and protects against
 upstream outages and rate limits, so it should perform better on Perlmutter
 than pulling directly from GHCR. The cache requires a NERSC Registry login on
 Perlmutter. If you do not have registry access, request it through
 <https://help.nersc.gov>. The installer and kernel launcher fall back to the
 public GHCR image if the cached pull fails, including when you have not logged
-in or the NERSC Registry is unavailable. The Slurm-enabled kernel installer
-also builds two host-side helpers from the bundled Go source, so `go` must be
-on `PATH` before installation. Use `module spider go` to find an available Go
-module if needed.
+in or the NERSC Registry is unavailable. For Slurm and host SSH support, the
+installer also downloads the tested Linux x86-64 host proxy binaries from the
+same GHCR package. It verifies their SHA-256 checksums and installs them in
+`${HOME}/bin`; no Go module is needed on Perlmutter.
 
 Current NERSC references: [Perlmutter timeline](https://docs.nersc.gov/systems/perlmutter/timeline/),
 [Jupyter server choices](https://docs.nersc.gov/services/jupyter/reference/),
@@ -66,11 +66,10 @@ git clone https://github.com/nersc/perlmutter-desktop-containers.git
 cd perlmutter-desktop-containers
 ```
 
-3. Load the NERSC Python and Go modules:
+3. Load the NERSC Python module:
 
 ```sh
 module load python
-module load go
 ```
 
    If you have access, log in to the NERSC Registry to use its pull-through
@@ -131,7 +130,7 @@ flowchart TD
     login[Start a Perlmutter Jupyter server at jupyter.nersc.gov]
     terminal[Open a JupyterLab terminal]
     clone[One-time setup clone this repo]
-    modules[Load Python and Go modules; log in to registry.nersc.gov if available]
+    modules[Load Python; log in to registry.nersc.gov if available]
     install[Run install-jupyter-kernel.sh with prepull]
     notebook[Start a notebook with the new VNC kernel]
     firstcell[Run anything in the first cell]
@@ -282,9 +281,10 @@ kernelspecs set `gpu: true`, which adds `--gpu` to
 make the VNC display itself use GPU-accelerated OpenGL rendering; Xvnc uses Mesa
 software rendering today. VirtualGL/EGL integration for hardware-accelerated
 OpenGL inside the VNC display is planned for a future update. Installing a
-Slurm-enabled kernelspec builds the host-side
-`scli-server` into `${HOME}/bin/scli-server` and `ssh-proxy-server` into
-`${HOME}/bin/ssh-proxy-server`. With `--slurm`, the launcher starts
+Slurm-enabled kernelspec pulls the `host-proxies-linux-amd64` package through
+the NERSC Registry cache, falling back to GHCR if needed. The installer checks
+the SHA-256 hashes and places `scli-server` in `${HOME}/bin/scli-server` and
+`ssh-proxy-server` in `${HOME}/bin/ssh-proxy-server`. With `--slurm`, the launcher starts
 `scli-server` if the socket is not already present, then mounts the Unix socket
 and sets `SCLI_SOCKET` inside the container. With `--ssh-proxy`, it does the
 same for `ssh-proxy-server` and `SSH_PROXY_SOCKET`. Socket defaults are
@@ -610,7 +610,7 @@ python3 -m vnc_novnc.runner --image registry.nersc.gov/ghcr.io/nersc/perlmutter-
 python3 -m vnc_novnc.runner --image registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:alma-9-xfce-main
 ```
 
-The `--slurm` example requires the host-side `scli-server` binary created by
+The `--slurm` example requires the host-side `scli-server` binary installed by
 the Slurm-enabled kernel installer.
 
 Expose the raw VNC server port in addition to noVNC:
