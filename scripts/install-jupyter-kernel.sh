@@ -10,19 +10,20 @@ Install the VNC/noVNC podman-hpc Jupyter kernelspec for the current user.
 DISTRO and DESKTOP select which published image tag the installed kernel uses.
 They may also be passed with --distro and --desktop.
 Image pulls prefer the NERSC Registry cache and retry GHCR directly if it fails.
+With no variant arguments, install the Perlmutter openSUSE XFCE Slurm kernel.
 
 Options:
   --distro DISTRO         Image distro. Values: debian12, ubuntu24.04, ubuntu,
                           alma9, opensuse15.6. Dash aliases such as
                           debian-12 and opensuse-15.6 are also accepted.
-                          Default: debian12
+                          When only DESKTOP is given: debian12
   --desktop DESKTOP       Desktop environment. Values depend on distro:
                           debian12: fvwm3, xfce
                           ubuntu24.04: fvwm3, xfce, xfce-slurm
                           ubuntu: gpu-xfce
                           alma9: fvwm3, xfce
                           opensuse15.6: xfce, xfce-slurm
-                          Default: fvwm3
+                          When only DISTRO is given: fvwm3
   --name NAME             Kernelspec directory name.
                           Default: vnc-novnc-DISTRO-DESKTOP.
   --display-name NAME     Kernel display name shown in Jupyter.
@@ -350,6 +351,11 @@ fi
 if [[ "${#positionals[@]}" -ge 2 ]]; then
     desktop="${positionals[1]}"
     desktop_set=1
+fi
+
+if [[ "${distro_set}" -eq 0 && "${desktop_set}" -eq 0 && "${all_variants}" -eq 0 ]]; then
+    distro="opensuse15.6"
+    desktop="xfce-slurm"
 fi
 
 case "${display_mode,,}" in

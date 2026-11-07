@@ -36,10 +36,12 @@ Current NERSC references: [Perlmutter timeline](https://docs.nersc.gov/systems/p
 [podman-hpc](https://docs.nersc.gov/development/containers/podman-hpc/overview/),
 and [login-node policy](https://docs.nersc.gov/policies/resource-usage/).
 
-The kernel installer's default image is Debian 12 with fvwm3:
+The kernel installer's no-argument default is openSUSE Leap 15.6 XFCE Slurm
+with Unix noVNC, host-based SSH through the host proxy, and the mounted
+Perlmutter programming environment:
 
 ```text
-registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:debian-12-main
+registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:opensuse15.6-xfce-slurm-unix
 ```
 
 Images include TigerVNC, noVNC, Chromium, D-Bus session helpers, common fonts,
@@ -78,8 +80,8 @@ module load go
 podman-hpc login registry.nersc.gov
 ```
 
-   Install the recommended openSUSE Leap 15.6 XFCE Slurm kernelspec. This
-   variant enables Unix noVNC, the Slurm CLI and SSH proxies, and GPU
+   Install the default openSUSE Leap 15.6 XFCE Slurm kernelspec. This
+   variant enables Unix noVNC, the Slurm CLI and host SSH proxies, and GPU
    visibility in the generated kernelspec. `--prepull` makes the selected
    image available during installation so the first kernel startup does not
    have to wait for an image pull. If a migrated `podman-hpc` image is already
@@ -87,19 +89,14 @@ podman-hpc login registry.nersc.gov
    again.
 
 ```sh
-scripts/install-jupyter-kernel.sh opensuse15.6 xfce-slurm \
-  --novnc-transport unix \
-  --prepull \
-  --force
+scripts/install-jupyter-kernel.sh --prepull --force
 ```
 
 To refresh that image later without reinstalling the kernelspec:
 
 ```sh
 module load python
-scripts/install-jupyter-kernel.sh opensuse15.6 xfce-slurm \
-  --novnc-transport unix \
-  --prepull-only
+scripts/install-jupyter-kernel.sh --prepull-only
 ```
 
 If the cache pull fails, the installer pre-pulls directly from GHCR. An
@@ -640,13 +637,10 @@ python3 -m vnc_novnc.runner -- --ipc=host
 
 ## Jupyter Kernel
 
-Install the recommended openSUSE Leap 15.6 XFCE Slurm kernelspec:
+Install the default openSUSE Leap 15.6 XFCE Slurm kernelspec:
 
 ```sh
-scripts/install-jupyter-kernel.sh opensuse15.6 xfce-slurm \
-  --novnc-transport unix \
-  --prepull \
-  --force
+scripts/install-jupyter-kernel.sh --prepull --force
 ```
 
 This installs the Python package in editable mode for the current user and
@@ -665,6 +659,7 @@ Useful installer options:
 
 | Option | Purpose |
 | --- | --- |
+| No variant arguments | Install the openSUSE Leap 15.6 XFCE Slurm kernel with Unix noVNC, host SSH proxy, and Perlmutter PE settings. |
 | `DISTRO DESKTOP` | Select the image variant, for example `ubuntu24.04 xfce` or `opensuse15.6 xfce`. |
 | `--distro DISTRO`, `--desktop DESKTOP` | Select the same variant with explicit options. |
 | `--all` | Install one kernelspec for every supported distro/desktop combination. |
@@ -689,7 +684,7 @@ Useful installer options:
 Examples:
 
 ```sh
-scripts/install-jupyter-kernel.sh opensuse15.6 xfce-slurm --novnc-transport unix --prepull --force
+scripts/install-jupyter-kernel.sh --prepull --force
 scripts/install-jupyter-kernel.sh ubuntu24.04 xfce --force
 scripts/install-jupyter-kernel.sh ubuntu24.04 xfce-slurm --force
 scripts/install-jupyter-kernel.sh opensuse15.6 xfce --force
@@ -778,7 +773,7 @@ vnc_novnc.display_connection()
 The sample kernel config is `kernels/vnc-novnc/vnc-novnc.yaml`:
 
 ```yaml
-image: registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:debian-12-main
+image: registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:opensuse15.6-xfce-slurm-unix
 userns: keep-id
 keep_groups: true
 pull_policy: missing
@@ -786,7 +781,9 @@ display_mode: default
 novnc_transport: unix
 novnc_socket:
 jupyter_proxy_service: vnc-novnc
-gpu: false
+gpu: true
+slurm: true
+ssh_proxy: true
 
 volume:
   - "/global:/global"

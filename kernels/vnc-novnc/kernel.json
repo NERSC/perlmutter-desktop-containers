@@ -6,7 +6,7 @@
     "-f",
     "{connection_file}"
   ],
-  "display_name": "Debian VNC/noVNC (podman-hpc)",
+  "display_name": "VNC-opensuse15.6-xfce-slurm",
   "language": "python",
   "metadata": {
     "debugger": true
