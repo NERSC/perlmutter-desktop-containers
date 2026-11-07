@@ -9,6 +9,7 @@ Install the VNC/noVNC podman-hpc Jupyter kernelspec for the current user.
 
 DISTRO and DESKTOP select which published image tag the installed kernel uses.
 They may also be passed with --distro and --desktop.
+Image pulls prefer the NERSC Registry cache and retry GHCR directly if it fails.
 
 Options:
   --distro DISTRO         Image distro. Values: debian12, ubuntu24.04, ubuntu,
@@ -62,16 +63,16 @@ EOF
 list_variants() {
     cat <<'EOF'
 Supported variants:
-  debian12      fvwm3  ghcr.io/nersc/perlmutter-desktop-containers:debian-12-main
-  debian12      xfce   ghcr.io/nersc/perlmutter-desktop-containers:debian-12-xfce-main
-  ubuntu24.04   fvwm3  ghcr.io/nersc/perlmutter-desktop-containers:ubuntu-24.04-fvwm3-main
-  ubuntu24.04   xfce   ghcr.io/nersc/perlmutter-desktop-containers:ubuntu-24.04-xfce-main
-  ubuntu24.04   xfce-slurm ghcr.io/nersc/perlmutter-desktop-containers:ubuntu24.04-xfce-slurm
-  ubuntu        gpu-xfce ghcr.io/nersc/perlmutter-desktop-containers:ubuntu-gpu-xfce-main
-  alma9         fvwm3  ghcr.io/nersc/perlmutter-desktop-containers:alma-9-fvwm3-main
-  alma9         xfce   ghcr.io/nersc/perlmutter-desktop-containers:alma-9-xfce-main
-  opensuse15.6  xfce   ghcr.io/nersc/perlmutter-desktop-containers:opensuse-15.6-main
-  opensuse15.6  xfce-slurm ghcr.io/nersc/perlmutter-desktop-containers:opensuse15.6-xfce-slurm
+  debian12      fvwm3  registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:debian-12-main
+  debian12      xfce   registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:debian-12-xfce-main
+  ubuntu24.04   fvwm3  registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:ubuntu-24.04-fvwm3-main
+  ubuntu24.04   xfce   registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:ubuntu-24.04-xfce-main
+  ubuntu24.04   xfce-slurm registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:ubuntu24.04-xfce-slurm
+  ubuntu        gpu-xfce registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:ubuntu-gpu-xfce-main
+  alma9         fvwm3  registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:alma-9-fvwm3-main
+  alma9         xfce   registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:alma-9-xfce-main
+  opensuse15.6  xfce   registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:opensuse-15.6-main
+  opensuse15.6  xfce-slurm registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:opensuse15.6-xfce-slurm
 EOF
 }
 
@@ -113,47 +114,47 @@ set_variant_metadata() {
 
     case "${distro}:${desktop}" in
         debian12:fvwm3)
-            image="ghcr.io/nersc/perlmutter-desktop-containers:debian-12-main"
+            image="registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:debian-12-main"
             variant_slug="debian12-fvwm3"
             ;;
         debian12:xfce)
-            image="ghcr.io/nersc/perlmutter-desktop-containers:debian-12-xfce-main"
+            image="registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:debian-12-xfce-main"
             variant_slug="debian12-xfce"
             ;;
         ubuntu24.04:fvwm3)
-            image="ghcr.io/nersc/perlmutter-desktop-containers:ubuntu-24.04-fvwm3-main"
+            image="registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:ubuntu-24.04-fvwm3-main"
             variant_slug="ubuntu24.04-fvwm3"
             ;;
         ubuntu24.04:xfce)
-            image="ghcr.io/nersc/perlmutter-desktop-containers:ubuntu-24.04-xfce-main"
+            image="registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:ubuntu-24.04-xfce-main"
             variant_slug="ubuntu24.04-xfce"
             ;;
         ubuntu24.04:xfce-slurm)
-            image="ghcr.io/nersc/perlmutter-desktop-containers:ubuntu24.04-xfce-slurm"
+            image="registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:ubuntu24.04-xfce-slurm"
             variant_slug="ubuntu24.04-xfce-slurm"
             variant_gpu=1
             variant_slurm=1
             variant_ssh_proxy=1
             ;;
         ubuntu:gpu-xfce)
-            image="ghcr.io/nersc/perlmutter-desktop-containers:ubuntu-gpu-xfce-main"
+            image="registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:ubuntu-gpu-xfce-main"
             variant_slug="ubuntu-gpu-xfce"
             variant_gpu=1
             ;;
         alma9:fvwm3)
-            image="ghcr.io/nersc/perlmutter-desktop-containers:alma-9-fvwm3-main"
+            image="registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:alma-9-fvwm3-main"
             variant_slug="alma9-fvwm3"
             ;;
         alma9:xfce)
-            image="ghcr.io/nersc/perlmutter-desktop-containers:alma-9-xfce-main"
+            image="registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:alma-9-xfce-main"
             variant_slug="alma9-xfce"
             ;;
         opensuse15.6:xfce)
-            image="ghcr.io/nersc/perlmutter-desktop-containers:opensuse-15.6-main"
+            image="registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:opensuse-15.6-main"
             variant_slug="opensuse15.6-xfce"
             ;;
         opensuse15.6:xfce-slurm)
-            image="ghcr.io/nersc/perlmutter-desktop-containers:opensuse15.6-xfce-slurm"
+            image="registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:opensuse15.6-xfce-slurm"
             variant_slug="opensuse15.6-xfce-slurm"
             variant_gpu=1
             variant_slurm=1
@@ -174,7 +175,7 @@ apply_novnc_transport_image_metadata() {
 
     case "${distro}:${desktop}" in
         opensuse15.6:xfce-slurm)
-            image="ghcr.io/nersc/perlmutter-desktop-containers:opensuse15.6-xfce-slurm-unix"
+            image="registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:opensuse15.6-xfce-slurm-unix"
             ;;
     esac
 }
@@ -439,6 +440,7 @@ image_available_locally() {
 
 prepull_image() {
     local pull_image="$1"
+    local fallback_image
 
     if image_already_prepulled "${pull_image}"; then
         return 0
@@ -451,8 +453,28 @@ prepull_image() {
     fi
 
     printf 'Pre-pulling image: %s\n' "${pull_image}"
-    "${podman_hpc}" pull "${pull_image}"
-    prepulled_images+=("${pull_image}")
+    if "${podman_hpc}" pull "${pull_image}"; then
+        prepulled_images+=("${pull_image}")
+        return 0
+    fi
+
+    case "${pull_image}" in
+        registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:*)
+            fallback_image="${pull_image#registry.nersc.gov/}"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+
+    printf 'NERSC Registry pull failed; using GHCR directly: %s\n' "${fallback_image}" >&2
+    if image_available_locally "${fallback_image}"; then
+        printf 'Image already available locally or as a migrated podman-hpc image: %s\n' "${fallback_image}"
+    else
+        "${podman_hpc}" pull "${fallback_image}"
+    fi
+    image="${fallback_image}"
+    prepulled_images+=("${fallback_image}")
 }
 
 build_scli_server() {

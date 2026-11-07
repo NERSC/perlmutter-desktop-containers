@@ -145,6 +145,22 @@ def prepare_image(podman_hpc, image, pull_policy):
     return subprocess.call([podman_hpc, "pull", image])
 
 
+def prepare_image_with_fallback(podman_hpc, image, pull_policy):
+    pull_rc = prepare_image(podman_hpc, image, pull_policy)
+    if pull_rc == 0 or not image.startswith("registry.nersc.gov/ghcr.io/"):
+        return pull_rc, image
+
+    fallback_image = image[len("registry.nersc.gov/"):]
+    print(
+        "NERSC Registry pull failed; retrying directly from GHCR: {}".format(
+            fallback_image
+        ),
+        file=sys.stderr,
+        flush=True,
+    )
+    return prepare_image(podman_hpc, fallback_image, pull_policy), fallback_image
+
+
 def run_pull_policy(pull_policy):
     if not pull_policy:
         return ""
@@ -1202,6 +1218,13 @@ def main(argv=None):
             handle.write(vnc_password + "\n")
         os.chmod(password_file, 0o600)
 
+        if not args.dry_run:
+            pull_rc, args.image = prepare_image_with_fallback(
+                args.podman_hpc, args.image, args.pull_policy
+            )
+            if pull_rc != 0:
+                return pull_rc
+
         host_novnc_port, run_args = add_podman_run_args(args, password_file)
         print_access_details(args, host_novnc_port, vnc_password)
 
@@ -1209,10 +1232,6 @@ def main(argv=None):
             print("Command:")
             print(shell_join(run_args))
             return 0
-
-        pull_rc = prepare_image(args.podman_hpc, args.image, args.pull_policy)
-        if pull_rc != 0:
-            return pull_rc
 
         return subprocess.call(run_args)
 
