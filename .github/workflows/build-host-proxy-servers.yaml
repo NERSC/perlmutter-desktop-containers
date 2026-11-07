@@ -36,8 +36,24 @@ jobs:
 
       - name: Build host proxy servers
         working-directory: container/slurm-cli-proxy
+        env:
+          CGO_ENABLED: '0'
+          GOOS: linux
+          GOARCH: amd64
         run: |
-          go build -buildvcs=false -o "${RUNNER_TEMP}/scli-server" ./cmd/scli-server
-          go build -buildvcs=false -o "${RUNNER_TEMP}/ssh-proxy-server" ./cmd/ssh-proxy-server
+          go build -trimpath -buildvcs=false -ldflags='-s -w' -o "${RUNNER_TEMP}/scli-server" ./cmd/scli-server
+          go build -trimpath -buildvcs=false -ldflags='-s -w' -o "${RUNNER_TEMP}/ssh-proxy-server" ./cmd/ssh-proxy-server
           test -x "${RUNNER_TEMP}/scli-server"
           test -x "${RUNNER_TEMP}/ssh-proxy-server"
+          file "${RUNNER_TEMP}/scli-server" "${RUNNER_TEMP}/ssh-proxy-server"
+          sha256sum "${RUNNER_TEMP}/scli-server" "${RUNNER_TEMP}/ssh-proxy-server" > "${RUNNER_TEMP}/SHA256SUMS"
+
+      - name: Upload host proxy test binaries
+        uses: actions/upload-artifact@v7
+        with:
+          name: host-proxies-linux-amd64
+          path: |
+            ${{ runner.temp }}/scli-server
+            ${{ runner.temp }}/ssh-proxy-server
+            ${{ runner.temp }}/SHA256SUMS
+          if-no-files-found: error
