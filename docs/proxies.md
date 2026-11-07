@@ -43,26 +43,26 @@ and sends stdin/stdout/stderr frames through the socket.
 flowchart TB
     subgraph Container
         direction LR
-        shell["Container shell"]
-        scli["scli / Slurm symlink"]
+        shell["Shell"]
+        scli["scli"]
         shell --> scli
     end
 
-    socket[["Mounted Unix socket<br/>command and I/O frames"]]
+    socket[["Unix socket"]]
 
     subgraph Host
         direction LR
         server["scli-server"]
-        hostio["Host PTY or pipes"]
-        slurm["Native Slurm CLI<br/>srun / squeue / sbatch"]
-        daemon["Slurm daemons"]
+        hostio["Host PTY"]
+        slurm["Slurm CLI"]
+        daemon["Slurm"]
         server <--> hostio
         hostio <--> slurm
         slurm --> daemon
     end
 
-    Container <--> socket
-    socket <--> Host
+    scli <--> socket
+    socket <--> server
 ```
 
 The SSH proxy uses the same framing model. The container-side `ssh` shim puts
@@ -73,27 +73,28 @@ process talks to a host-side PTY or pipes managed by `ssh-proxy-server`.
 flowchart TB
     subgraph Container
         direction LR
-        term["Container terminal"]
-        sshshim["ssh-proxy client<br/>local TTY"]
+        term["Terminal"]
+        sshshim["ssh-proxy"]
         term --> sshshim
     end
 
-    socket[["Mounted Unix socket<br/>command and I/O frames"]]
+    socket[["Unix socket"]]
 
     subgraph Host
         direction LR
-        server["ssh-proxy-server"]
-        hostpty["Host PTY or pipes"]
-        realssh["/usr/bin/ssh"]
-        auth["Host SSH config<br/>and host-based auth"]
-        target["Remote host"]
+        server["SSH server"]
+        hostpty["Host PTY"]
+        realssh["Host ssh"]
+        auth["Host auth"]
+        target["Remote"]
         server <--> hostpty
         hostpty <--> realssh
-        realssh --> auth --> target
+        auth --> realssh
+        realssh <--> target
     end
 
-    Container <--> socket
-    socket <--> Host
+    sshshim <--> socket
+    socket <--> server
 ```
 
 ```sh

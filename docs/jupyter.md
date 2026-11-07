@@ -76,18 +76,18 @@ The user workflow is:
 
 ```mermaid
 flowchart TD
-    login["Start Perlmutter<br/>JupyterLab"]
-    terminal["Open a terminal"]
-    clone["Clone this repo<br/>one time"]
-    modules["Load Python<br/>and log in to the registry<br/>if available"]
-    install["Install the VNC kernel<br/>and optionally pre-pull"]
+    login["Perlmutter JupyterLab"]
+    terminal["Terminal"]
+    clone["Clone repo"]
+    modules["Load Python"]
+    install["Install kernel"]
     restart["Restart JupyterLab"]
-    notebook["Start a VNC notebook"]
-    firstcell["Run the first cell"]
-    output["Get the noVNC URL<br/>and connection details"]
-    openurl["Open the noVNC URL"]
-    password["Enter the VNC password<br/>if prompted"]
-    desktop["Use the desktop"]
+    notebook["VNC notebook"]
+    firstcell["Run first cell"]
+    output["Get noVNC URL"]
+    openurl["Open noVNC"]
+    password["Password if asked"]
+    desktop["Desktop"]
 
     login --> terminal
     terminal --> clone
@@ -119,17 +119,17 @@ The Unix-mode runtime flow is:
 
 ```mermaid
 flowchart TB
-    browser["Browser<br/>noVNC page"]
+    browser["Browser"]
     hub["JupyterHub"]
-    proxy["Jupyter Server Proxy<br/>named service"]
-    socket["User-private<br/>Unix socket"]
-    unixproxy["Container Unix<br/>socket forwarder"]
-    novnc["noVNC websockify<br/>container loopback"]
-    vnc["TigerVNC<br/>port 5901"]
-    desktop["Desktop and<br/>kernel process"]
-    wrapper["Runner or Jupyter<br/>kernel wrapper"]
-    podman["podman-hpc<br/>socket mount"]
-    password["Random VNC password<br/>internal fallback"]
+    proxy["Server Proxy"]
+    socket["Unix socket"]
+    unixproxy["Socket forwarder"]
+    novnc["noVNC"]
+    vnc["TigerVNC"]
+    desktop["Desktop"]
+    wrapper["Kernel wrapper"]
+    podman["podman-hpc"]
+    password["VNC password"]
 
     browser --> hub
     hub --> proxy

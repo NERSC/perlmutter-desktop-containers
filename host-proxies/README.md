@@ -35,29 +35,29 @@ The implementation has two commands:
 flowchart TB
     subgraph Container
         direction LR
-        shell["Interactive shell"]
-        sshlink["ssh symlink"]
-        client["ssh-proxy client<br/>raw-mode local TTY"]
+        shell["Shell"]
+        sshlink["ssh"]
+        client["ssh-proxy"]
     end
 
-    socket[["Unix socket<br/>request frames<br/>stdin/stdout/TTY frames"]]
+    socket[["Unix socket"]]
 
     subgraph Host
         direction LR
-        server["ssh-proxy-server"]
-        hostpty["Host PTY or pipes<br/>owned by server"]
-        realssh["/usr/bin/ssh"]
-        auth["Host SSH config and host-based auth"]
+        server["SSH server"]
+        hostpty["Host PTY"]
+        realssh["Host ssh"]
+        auth["Host auth"]
     end
 
-    remote["Remote NERSC host"]
+    remote["Remote"]
 
     shell --> sshlink --> client
-    Container <--> socket
-    socket <--> Host
+    client <--> socket
+    socket <--> server
     server <--> hostpty
     hostpty <--> realssh
-    realssh --> auth
+    auth --> realssh
     realssh <--> remote
 ```
 
