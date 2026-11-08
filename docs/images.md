@@ -13,22 +13,28 @@ images/<base-os>/<desktop>/Dockerfile
 The build context is the repository root so variants can reuse shared image
 files from `images/common/` and Python code from `src/vnc_novnc/`.
 
+Each row is a desktop image that you can select by its pull reference. XFCE and
+fvwm3 are graphical desktop environments. The variants with host Slurm and SSH
+support let desktop terminals use Perlmutter's job scheduler and host SSH
+configuration; [host proxies](proxies.md) explains how.
+
 | Variant | Dockerfile | Cached pull reference |
 | --- | --- | --- |
 | Debian 12 + fvwm3 | `images/debian-12/fvwm3/Dockerfile` | `registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:debian-12-main` |
 | Debian 12 + XFCE | `images/debian-12/xfce/Dockerfile` | `registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:debian-12-xfce-main` |
 | Ubuntu 24.04 + fvwm3 | `images/ubuntu-24.04/fvwm3/Dockerfile` | `registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:ubuntu-24.04-fvwm3-main` |
 | Ubuntu 24.04 + XFCE | `images/ubuntu-24.04/xfce/Dockerfile` | `registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:ubuntu-24.04-xfce-main` |
-| Ubuntu 24.04 + XFCE + Slurm CLI proxy | `images/ubuntu-24.04/xfce-slurm/Dockerfile` | `registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:ubuntu24.04-xfce-slurm` |
+| Ubuntu 24.04 + XFCE + host Slurm/SSH | `images/ubuntu-24.04/xfce-slurm/Dockerfile` | `registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:ubuntu24.04-xfce-slurm` |
 | Ubuntu CUDA + GPU XFCE | `images/ubuntu-cuda/xfce/Dockerfile` | `registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:ubuntu-gpu-xfce-main` |
 | AlmaLinux 9 + fvwm3 | `images/alma-9/fvwm3/Dockerfile` | `registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:alma-9-fvwm3-main` |
 | AlmaLinux 9 + XFCE | `images/alma-9/xfce/Dockerfile` | `registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:alma-9-xfce-main` |
 | openSUSE Leap 15.6 + XFCE | `images/opensuse-15.6/xfce/Dockerfile` | `registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:opensuse-15.6-main` |
-| openSUSE Leap 15.6 + XFCE + Slurm CLI proxy | `images/opensuse-15.6/xfce-slurm/Dockerfile` | `registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:opensuse15.6-xfce-slurm` |
-| openSUSE Leap 15.6 + XFCE + Slurm CLI proxy + Unix noVNC | `images/opensuse-15.6/xfce-slurm/Dockerfile` | `registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:opensuse15.6-xfce-slurm-unix` |
+| openSUSE Leap 15.6 + XFCE + host Slurm/SSH | `images/opensuse-15.6/xfce-slurm/Dockerfile` | `registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:opensuse15.6-xfce-slurm` |
+| Recommended for Jupyter: openSUSE Leap 15.6 + XFCE + host Slurm/SSH | `images/opensuse-15.6/xfce-slurm/Dockerfile` | `registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:opensuse15.6-xfce-slurm-unix` |
 
-The two openSUSE Slurm tags refer to the same image build; the launcher selects
-the noVNC transport at runtime.
+The two openSUSE Slurm tags refer to the same image build. The default Jupyter
+installer selects the `-unix` tag and connects the browser through a private
+Unix socket. The launcher selects the connection method at runtime.
 
 AlmaLinux 10 fvwm3 and XFCE Dockerfiles are scaffolded under `images/alma-10/`,
 but they are not in CI yet. `podman-hpc run` package probes against AlmaLinux

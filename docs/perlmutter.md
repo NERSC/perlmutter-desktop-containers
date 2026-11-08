@@ -38,9 +38,11 @@ Current NERSC references: [Perlmutter timeline](https://docs.nersc.gov/systems/p
 [podman-hpc](https://docs.nersc.gov/development/containers/podman-hpc/overview/),
 and [login-node policy](https://docs.nersc.gov/policies/resource-usage/).
 
-The kernel installer's no-argument default is openSUSE Leap 15.6 XFCE Slurm
-with Unix noVNC, host-based SSH through the host proxy, and the mounted
-Perlmutter programming environment:
+With no variant arguments, the installer chooses an openSUSE Leap 15.6 desktop
+with XFCE. Its terminal can use Perlmutter's job scheduler and your host SSH
+setup, and the Perlmutter programming environment is available inside the
+container. The browser connection runs through Jupyter and a private Unix
+socket. The image reference is:
 
 ```text
 registry.nersc.gov/ghcr.io/nersc/perlmutter-desktop-containers:opensuse15.6-xfce-slurm-unix

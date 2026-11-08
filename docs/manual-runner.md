@@ -4,8 +4,9 @@ This guide applies to Perlmutter as of November 2026. Run shell commands from th
 
 ## Quickstart: Manual noVNC Container
 
-You can also run a desktop container directly from a terminal without installing
-or selecting a Jupyter kernel.
+You can also start a graphical desktop directly from a JupyterLab terminal,
+without installing or selecting a notebook kernel. The desktop still opens in
+your browser.
 
 1. In a Perlmutter JupyterLab terminal, clone the public repo:
 

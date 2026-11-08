@@ -1,6 +1,13 @@
 # Slurm and host SSH proxies
 
-These components are included in the Slurm-enabled desktop images. See [image variants](images.md) for available tags and [Jupyter kernels](jupyter.md) for installation. Run shell commands from the repository root.
+From a desktop terminal, you can run Slurm job commands such as `srun`,
+`sbatch`, and `squeue`, as well as `ssh`. Small proxy programs pass those
+commands to the Perlmutter host over private Unix sockets, where your existing
+Slurm and SSH setup can handle them. This page describes those programs.
+
+See [image variants](images.md) for available tags and
+[Jupyter desktop setup](jupyter.md) for installation. Run shell commands from
+the repository root.
 
 The `ubuntu24.04 xfce-slurm` and `opensuse15.6 xfce-slurm` images include the
 `scli` client and Slurm command symlinks (`srun`, `sbatch`, `squeue`, and

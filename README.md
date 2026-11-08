@@ -1,7 +1,9 @@
-# Perlmutter Desktop Containers (VNC/noVNC)
+# Perlmutter desktop containers
 
-Run a desktop in NERSC JupyterLab on Perlmutter. These instructions apply to
-the Perlmutter environment as of **November 2026**.
+Open a graphical desktop in your browser from NERSC JupyterLab on Perlmutter.
+The recommended desktop includes a terminal and browser and can use
+Perlmutter's job scheduler and SSH setup. These instructions apply to
+Perlmutter as of **November 2026**.
 
 ## Quick start
 
@@ -24,21 +26,21 @@ the Perlmutter environment as of **November 2026**.
    podman-hpc login registry.nersc.gov
    ```
 
-4. Install and pre-pull the default openSUSE Leap 15.6 XFCE Slurm kernel, with
-   Unix noVNC, host SSH, and the Perlmutter programming environment:
+4. Install the recommended desktop and prepare its container image so the
+   first launch is faster:
 
    ```sh
    scripts/install-jupyter-kernel.sh --prepull --force
    ```
 
-5. Restart JupyterLab, create a notebook with the
-   `VNC-opensuse15.6-xfce-slurm` kernel, run its first cell, and open the noVNC
-   URL it prints.
+5. Restart JupyterLab. Create a notebook and choose the
+   `VNC-opensuse15.6-xfce-slurm` kernel (the desktop launch option). Run a cell,
+   then open the desktop link it prints.
 
 ## Guides
 
-- [Perlmutter scope and prerequisites](docs/perlmutter.md)
-- [Jupyter kernel setup and behavior](docs/jupyter.md)
-- [Manual desktop runner, TCP default, and optional Unix socket](docs/manual-runner.md)
-- [Image variants and builds](docs/images.md)
-- [Slurm and host SSH proxies](docs/proxies.md)
+- [Perlmutter setup and prerequisites](docs/perlmutter.md)
+- [Install and use a Jupyter desktop](docs/jupyter.md)
+- [Run a desktop directly from a terminal](docs/manual-runner.md)
+- [Available desktops and image builds](docs/images.md)
+- [How Slurm and SSH work inside the desktop](docs/proxies.md)
