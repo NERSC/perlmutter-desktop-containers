@@ -1,6 +1,24 @@
 # Jupyter desktop kernels
 
-For Perlmutter setup and registry access, see [scope and prerequisites](perlmutter.md). Run shell commands from the repository root.
+For Perlmutter setup and registry access, see [scope and prerequisites](perlmutter.md).
+Run shell commands from the repository root.
+
+## What the recommended desktop provides
+
+The default installation adds an XFCE graphical desktop in an openSUSE Leap
+15.6 container. JupyterLab lists it as a notebook kernel: selecting that kernel
+starts the desktop. Run a cell to get its link, then open the desktop in your
+browser. The printed noVNC URL is the desktop's web page. Stopping the notebook
+kernel stops the desktop.
+
+From a terminal in that desktop, you can use Perlmutter's Slurm commands to
+submit and inspect jobs. SSH uses your host account's SSH configuration and
+authentication. The Perlmutter programming environment is mounted so its
+modules and compiler setup are available. [Host proxies](proxies.md) explain
+how the Slurm and SSH commands reach Perlmutter from inside the container.
+
+The browser reaches the desktop through Jupyter's authenticated proxy and a
+private Unix socket. This avoids opening a noVNC TCP port on the shared host.
 
 ## Quickstart: Jupyter Kernel
 
@@ -28,13 +46,10 @@ module load python
 podman-hpc login registry.nersc.gov
 ```
 
-   Install the default openSUSE Leap 15.6 XFCE Slurm kernelspec. This
-   variant enables Unix noVNC, the Slurm CLI and host SSH proxies, and GPU
-   visibility in the generated kernelspec. `--prepull` makes the selected
-   image available during installation so the first kernel startup does not
-   have to wait for an image pull. If a migrated `podman-hpc` image is already
-   present on Perlmutter scratch, the installer reuses it instead of pulling
-   again.
+   Install the recommended desktop described above. `--prepull` makes its
+   container image available now, so the first launch does not have to wait
+   for a pull. If a migrated `podman-hpc` image is already present on
+   Perlmutter scratch, the installer reuses it.
 
 ```sh
 scripts/install-jupyter-kernel.sh --prepull --force
@@ -51,8 +66,8 @@ If the cache pull fails, the installer pre-pulls directly from GHCR. An
 installed kernel also retries GHCR if its cached image is unavailable at
 startup.
 
-4. After the first Unix-mode install, stop and restart your JupyterLab server
-   so it loads the new named proxy service. Create a new notebook with the
+4. After the first install, stop and restart your JupyterLab server so it
+   loads the desktop's browser connection. Create a new notebook with the
    `VNC-opensuse15.6-xfce-slurm` kernel. Refresh JupyterLab if the kernel
    menu has not updated.
 
@@ -76,18 +91,18 @@ The user workflow is:
 
 ```mermaid
 flowchart TD
-    login["Start Perlmutter<br/>JupyterLab"]
-    terminal["Open a terminal"]
-    clone["Clone this repo<br/>one time"]
-    modules["Load Python<br/>and log in to the registry<br/>if available"]
-    install["Install the VNC kernel<br/>and optionally pre-pull"]
+    login["Perlmutter JupyterLab"]
+    terminal["Terminal"]
+    clone["Clone repo"]
+    modules["Load Python"]
+    install["Install kernel"]
     restart["Restart JupyterLab"]
-    notebook["Start a VNC notebook"]
-    firstcell["Run the first cell"]
-    output["Get the noVNC URL<br/>and connection details"]
-    openurl["Open the noVNC URL"]
-    password["Enter the VNC password<br/>if prompted"]
-    desktop["Use the desktop"]
+    notebook["VNC notebook"]
+    firstcell["Run first cell"]
+    output["Get noVNC URL"]
+    openurl["Open noVNC"]
+    password["Password if asked"]
+    desktop["Desktop"]
 
     login --> terminal
     terminal --> clone
@@ -119,17 +134,17 @@ The Unix-mode runtime flow is:
 
 ```mermaid
 flowchart TB
-    browser["Browser<br/>noVNC page"]
+    browser["Browser"]
     hub["JupyterHub"]
-    proxy["Jupyter Server Proxy<br/>named service"]
-    socket["User-private<br/>Unix socket"]
-    unixproxy["Container Unix<br/>socket forwarder"]
-    novnc["noVNC websockify<br/>container loopback"]
-    vnc["TigerVNC<br/>port 5901"]
-    desktop["Desktop and<br/>kernel process"]
-    wrapper["Runner or Jupyter<br/>kernel wrapper"]
-    podman["podman-hpc<br/>socket mount"]
-    password["Random VNC password<br/>internal fallback"]
+    proxy["Server Proxy"]
+    socket["Unix socket"]
+    unixproxy["Socket forwarder"]
+    novnc["noVNC"]
+    vnc["TigerVNC"]
+    desktop["Desktop"]
+    wrapper["Kernel wrapper"]
+    podman["podman-hpc"]
+    password["VNC password"]
 
     browser --> hub
     hub --> proxy
@@ -168,7 +183,7 @@ python3 scripts/run-vnc-novnc.py --jupyter-proxy-server your-server-name
 
 ## Jupyter Kernel
 
-Install the default openSUSE Leap 15.6 XFCE Slurm kernelspec:
+Install the recommended desktop kernel:
 
 ```sh
 scripts/install-jupyter-kernel.sh --prepull --force
@@ -190,7 +205,7 @@ Useful installer options:
 
 | Option | Purpose |
 | --- | --- |
-| No variant arguments | Install the openSUSE Leap 15.6 XFCE Slurm kernel with Unix noVNC, host SSH proxy, and Perlmutter PE settings. |
+| No variant arguments | Install the recommended openSUSE XFCE desktop, with access to Perlmutter jobs, SSH, and programming tools. |
 | `DISTRO DESKTOP` | Select the image variant, for example `ubuntu24.04 xfce` or `opensuse15.6 xfce`. |
 | `--distro DISTRO`, `--desktop DESKTOP` | Select the same variant with explicit options. |
 | `--all` | Install one kernelspec for every supported distro/desktop combination. |
